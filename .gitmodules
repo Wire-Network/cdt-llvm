@@ -1,6 +1,9 @@
-[submodule "tools/clang"]
-	path = tools/clang
-	url = git@github.com:eosio/clang
 [submodule "tools/lld"]
 	path = tools/lld
 	url = git@github.com:eosio/lld
+[submodule "tools/-f"]
+	path = tools/-f
+	url = git@github.com:eosio/clang
+[submodule "tools/clang"]
+	path = tools/clang
+	url = git@github.com:eosio/clang
