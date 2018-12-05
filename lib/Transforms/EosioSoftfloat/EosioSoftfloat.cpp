@@ -92,13 +92,13 @@ namespace {
                 }
              }
              else if (BitCastInst* bc = dyn_cast<BitCastInst>(&*inst)) {
-                outs() << *unop << unop->getDestTy()->getTypeID() << " " << Type::TypeID::X86_FP80TyID << "\n";
                 auto src_ty  = bc->getSrcTy();
                 auto dest_ty = bc->getDestTy();
-                if (auto bc->getSrcTy(
+                /*
                 if (bc->get->getType()->getTypeID() == Type::TypeID::X86_FP80TyID) {
-                   outs() << *(unop->getOperand(0)->getType()) <<  (*unop) << "\n";
+                   outs() << *(bc->getOperand(0)->getType()) <<  (*bc) << "\n";
                 }
+                */
              }
              else if (BinaryOperator* binop = dyn_cast<BinaryOperator>(&*inst)) {
                 Function* func = nullptr;
