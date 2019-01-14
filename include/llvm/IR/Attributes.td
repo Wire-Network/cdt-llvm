@@ -235,3 +235,5 @@ def : MergeRule<"setOR<ProfileSampleAccurateAttr>">;
 def : MergeRule<"adjustCallerSSPLevel">;
 def : MergeRule<"adjustCallerStackProbes">;
 def : MergeRule<"adjustCallerStackProbeSize">;
+
+def EosioWasmEntry : EnumAttr<"wasm_entry">;
