@@ -17,9 +17,14 @@
 #include "llvm/IR/Type.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/Transforms/IPO/PassManagerBuilder.h"
+#include "llvm/Transforms/Utils/BasicBlockUtils.h"
 #include "llvm/Pass.h"
 #include "llvm/IR/Attributes.h"
 #include "llvm/Support/raw_ostream.h"
+
+#include <set>
+#include <utility>
+
 using namespace llvm;
 
 #define DEBUG_TYPE "eosio_apply"
@@ -29,10 +34,8 @@ namespace {
   struct EosioApplyPass : public FunctionPass {
     static char ID; 
     EosioApplyPass() : FunctionPass(ID) {}
-
     bool runOnFunction(Function &F) override {
-      if (F.getName().equals("apply")) {
-
+       if (F.getName().equals("apply")) {
          Function* wasm_ctors = (Function*)F.getParent()->getOrInsertFunction("__wasm_call_ctors", AttributeList{}, Type::getVoidTy(F.getContext()));
          Function* wasm_dtors = (Function*)F.getParent()->getOrInsertFunction("__cxa_finalize", AttributeList{}, Type::getVoidTy(F.getContext()), Type::getInt32Ty(F.getContext()));
 

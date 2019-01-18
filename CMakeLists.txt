@@ -331,7 +331,7 @@ set(LLVM_ALL_TARGETS
 # List of targets with JIT support:
 set(LLVM_TARGETS_WITH_JIT X86 PowerPC AArch64 ARM Mips SystemZ)
 
-set(LLVM_TARGETS_TO_BUILD ""
+set(LLVM_TARGETS_TO_BUILD "X86"
     CACHE STRING "Semicolon-separated list of targets to build, or \"all\".")
 
  set(LLVM_EXPERIMENTAL_TARGETS_TO_BUILD "WebAssembly"
@@ -373,9 +373,9 @@ if( LLVM_TARGETS_TO_BUILD STREQUAL "all" )
   set( LLVM_TARGETS_TO_BUILD ${LLVM_ALL_TARGETS} )
 endif()
 
-set(LLVM_TARGETS_TO_BUILD "WebAssembly")
-#   ${LLVM_TARGETS_TO_BUILD}
-#   ${LLVM_EXPERIMENTAL_TARGETS_TO_BUILD})
+set(LLVM_TARGETS_TO_BUILD 
+   ${LLVM_TARGETS_TO_BUILD}
+   ${LLVM_EXPERIMENTAL_TARGETS_TO_BUILD})
 list(REMOVE_DUPLICATES LLVM_TARGETS_TO_BUILD)
 
 option(LLVM_ENABLE_PIC "Build Position-Independent Code" ON)
@@ -528,7 +528,7 @@ set(LLVM_INSTALL_OCAMLDOC_HTML_DIR "share/doc/llvm/ocaml-html"
     CACHE STRING "OCamldoc-generated HTML documentation install directory")
 
 option (LLVM_BUILD_EXTERNAL_COMPILER_RT
-  "Build compiler-rt as an external project." OFF)
+   "Build compiler-rt as an external project." OFF)
 
 option (LLVM_VERSION_PRINTER_SHOW_HOST_TARGET_INFO
   "Show target and host info when tools are invoked with --version." ON)

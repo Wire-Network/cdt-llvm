@@ -128,6 +128,19 @@ void WebAssemblyAsmPrinter::EmitEndOfAsmFile(Module &M) {
       OutStreamer->PopSection();
     }
   }
+
+  OutStreamer->PushSection();
+  std::string SectionName = ".imports";
+  MCSectionWasm *mySection =
+      OutContext.getWasmSection(SectionName, SectionKind::getMetadata());
+  OutStreamer->SwitchSection(mySection);
+  for (const auto &F : M) {
+     if (F.hasFnAttribute("eosio_wasm_import")) {
+        OutStreamer->EmitULEB128IntValue(F.getName().size());
+        OutStreamer->EmitBytes(F.getName());
+     }
+  }
+  OutStreamer->PopSection();
 }
 
 void WebAssemblyAsmPrinter::EmitConstantPool() {
