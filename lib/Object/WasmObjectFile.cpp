@@ -300,6 +300,18 @@ Error WasmObjectFile::parseSection(WasmSection &Sec) {
   }
 }
 
+Error WasmObjectFile::parseAllowedSection(ReadContext& Ctx) {
+   while (Ctx.Ptr < Ctx.End) {
+    StringRef Name = readString(Ctx);
+    AllowedImports.push_back(Name);
+  }
+
+   if (Ctx.Ptr != Ctx.End)
+    return make_error<GenericBinaryError>("allowed import section ended prematurely",
+                                          object_error::parse_failed);
+  return Error::success();
+}
+
 Error WasmObjectFile::parseNameSection(ReadContext &Ctx) {
   llvm::DenseSet<uint64_t> Seen;
   if (Functions.size() != FunctionTypes.size()) {
@@ -675,6 +687,9 @@ Error WasmObjectFile::parseCustomSection(WasmSection &Sec, ReadContext &Ctx) {
   } else if (Sec.Name.startswith("reloc.")) {
     if (Error Err = parseRelocSection(Sec.Name, Ctx))
       return Err;
+  } else if (Sec.Name == ".imports") {
+     if (Error err = parseAllowedSection(Ctx))
+        return err;
   }
   return Error::success();
 }

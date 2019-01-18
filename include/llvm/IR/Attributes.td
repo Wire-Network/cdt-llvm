@@ -237,3 +237,5 @@ def : MergeRule<"adjustCallerStackProbes">;
 def : MergeRule<"adjustCallerStackProbeSize">;
 
 def EosioWasmEntry : EnumAttr<"wasm_entry">;
+def EosioWasmImport : EnumAttr<"wasm_import">;
+
