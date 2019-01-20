@@ -137,6 +137,7 @@ public:
   ArrayRef<WasmSegment> dataSegments() const { return DataSegments; }
   ArrayRef<wasm::WasmFunction> functions() const { return Functions; }
   ArrayRef<wasm::WasmFunctionName> debugNames() const { return DebugNames; }
+  ArrayRef<StringRef> allowed_imports() const { return AllowedImports; }
   uint32_t startFunction() const { return StartFunction; }
   uint32_t getNumImportedGlobals() const { return NumImportedGlobals; }
   uint32_t getNumImportedFunctions() const { return NumImportedFunctions; }
@@ -233,6 +234,7 @@ private:
 
   // Custom section types
   Error parseNameSection(ReadContext &Ctx);
+  Error parseAllowedSection(ReadContext &Ctx);
   Error parseLinkingSection(ReadContext &Ctx);
   Error parseLinkingSectionSymtab(ReadContext &Ctx);
   Error parseLinkingSectionComdat(ReadContext &Ctx);
@@ -246,6 +248,7 @@ private:
   std::vector<wasm::WasmLimits> Memories;
   std::vector<wasm::WasmGlobal> Globals;
   std::vector<wasm::WasmImport> Imports;
+  std::vector<StringRef> AllowedImports;
   std::vector<wasm::WasmExport> Exports;
   std::vector<wasm::WasmElemSegment> ElemSegments;
   std::vector<WasmSegment> DataSegments;
