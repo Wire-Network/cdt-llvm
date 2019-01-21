@@ -40,7 +40,7 @@ namespace {
     static char ID; 
     EosioApplyPass() : FunctionPass(ID) {}
     bool runOnFunction(Function &F) override {
-       if (F.getName().equals(entry_opt)) {
+       if (F.hasFnAttribute("eosio_wasm_entry")) {
          Function* wasm_ctors = (Function*)F.getParent()->getOrInsertFunction("__wasm_call_ctors", AttributeList{}, Type::getVoidTy(F.getContext()));
          Function* wasm_dtors = (Function*)F.getParent()->getOrInsertFunction("__cxa_finalize", AttributeList{}, Type::getVoidTy(F.getContext()), Type::getInt32Ty(F.getContext()));
 

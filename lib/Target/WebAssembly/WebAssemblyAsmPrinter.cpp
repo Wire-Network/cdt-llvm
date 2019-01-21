@@ -141,6 +141,21 @@ void WebAssemblyAsmPrinter::EmitEndOfAsmFile(Module &M) {
      }
   }
   OutStreamer->PopSection();
+  OutStreamer->PushSection(); 
+  {
+     std::string SectionName = ".eosio_abi";
+     MCSectionWasm *mySection =
+         OutContext.getWasmSection(SectionName, SectionKind::getMetadata());
+     OutStreamer->SwitchSection(mySection);
+     for (const auto &F : M) {
+        if (F.hasFnAttribute("eosio_wasm_abi")) {
+           StringRef abi = F.getFnAttribute("eosio_wasm_abi").getValueAsString();
+           OutStreamer->EmitULEB128IntValue(abi.size());
+           OutStreamer->EmitBytes(abi);
+        }
+     }
+  }
+  OutStreamer->PopSection();
 }
 
 void WebAssemblyAsmPrinter::EmitConstantPool() {

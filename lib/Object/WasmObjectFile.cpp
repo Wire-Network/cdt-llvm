@@ -300,16 +300,27 @@ Error WasmObjectFile::parseSection(WasmSection &Sec) {
   }
 }
 
-Error WasmObjectFile::parseAllowedSection(ReadContext &Ctx) {
-  while (Ctx.Ptr < Ctx.End) {
+Error WasmObjectFile::parseEosioABISection(ReadContext& Ctx) {
+   StringRef sr = readString(Ctx);
+   eosio_abi = sr;
+
+   if (Ctx.Ptr != Ctx.End)
+      return make_error<GenericBinaryError>("allowed import section ended prematurely",
+                                          object_error::parse_failed);
+   return Error::success();
+
+}
+
+Error WasmObjectFile::parseAllowedSection(ReadContext& Ctx) {
+   while (Ctx.Ptr < Ctx.End) {
     StringRef Name = readString(Ctx);
     AllowedImports.push_back(Name);
-  }
+   }
 
-  if (Ctx.Ptr != Ctx.End)
-    return make_error<GenericBinaryError>("allowed import section ended prematurely",
+   if (Ctx.Ptr != Ctx.End)
+      return make_error<GenericBinaryError>("allowed import section ended prematurely",
                                           object_error::parse_failed);
-  return Error::success();
+   return Error::success();
 }
 
 Error WasmObjectFile::parseNameSection(ReadContext &Ctx) {
@@ -680,6 +691,9 @@ Error WasmObjectFile::parseRelocSection(StringRef Name, ReadContext &Ctx) {
 Error WasmObjectFile::parseCustomSection(WasmSection &Sec, ReadContext &Ctx) {
   if (Sec.Name == ".imports") {
      if (Error Err = parseAllowedSection(Ctx))
+        return Err;
+  } else if (Sec.Name == ".eosio_abi") {
+     if (Error Err = parseEosioABISection(Ctx))
         return Err;
   } else if (Sec.Name == "name") {
     if (Error Err = parseNameSection(Ctx))
