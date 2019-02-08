@@ -23,11 +23,16 @@
 #include "llvm/Support/raw_ostream.h"
 
 #include <set>
+#include <string>
 #include <utility>
 
 using namespace llvm;
 
 #define DEBUG_TYPE "eosio_apply"
+static cl::opt<std::string> entry_opt (
+   "entry",
+   cl::desc("Specify entry point")
+);
 
 namespace {
   // EosioApply - Mutate the apply function as needed 
@@ -35,7 +40,7 @@ namespace {
     static char ID; 
     EosioApplyPass() : FunctionPass(ID) {}
     bool runOnFunction(Function &F) override {
-       if (F.getName().equals("apply")) {
+       if (F.hasFnAttribute("eosio_wasm_entry") || F.getName().equals("apply")) {
          Function* wasm_ctors = (Function*)F.getParent()->getOrInsertFunction("__wasm_call_ctors", AttributeList{}, Type::getVoidTy(F.getContext()));
          Function* wasm_dtors = (Function*)F.getParent()->getOrInsertFunction("__cxa_finalize", AttributeList{}, Type::getVoidTy(F.getContext()), Type::getInt32Ty(F.getContext()));
 

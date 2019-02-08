@@ -77,6 +77,31 @@ WebAssemblyTargetStreamer *WebAssemblyAsmPrinter::getTargetStreamer() {
 //===----------------------------------------------------------------------===//
 // WebAssemblyAsmPrinter Implementation.
 //===----------------------------------------------------------------------===//
+uint64_t char_to_symbol( char c ) {
+   if( c >= 'a' && c <= 'z' )
+      return (c - 'a') + 6;
+   if( c >= '1' && c <= '5' )
+      return (c - '1') + 1;
+   return 0;
+}
+
+uint64_t string_to_name( const char* str ) {
+   uint64_t name = 0;
+   int i = 0;
+   for ( ; str[i] && i < 12; ++i) {
+       // NOTE: char_to_symbol() returns char type, and without this explicit
+       // expansion to uint64 type, the compilation fails at the point of usage
+       // of string_to_name(), where the usage requires constant (compile time) expression.
+        name |= (char_to_symbol(str[i]) & 0x1f) << (64 - 5 * (i + 1));
+    }
+
+   // The for-loop encoded up to 60 high bits into uint64 'name' variable,
+   // if (strlen(str) > 12) then encode str[12] into the low (remaining)
+   // 4 bits of 'name'
+   if (i == 12)
+       name |= char_to_symbol(str[12]) & 0x0F;
+   return name;
+}
 
 void WebAssemblyAsmPrinter::EmitEndOfAsmFile(Module &M) {
   for (const auto &F : M) {
@@ -128,19 +153,82 @@ void WebAssemblyAsmPrinter::EmitEndOfAsmFile(Module &M) {
       OutStreamer->PopSection();
     }
   }
-
-  OutStreamer->PushSection();
-  std::string SectionName = ".imports";
-  MCSectionWasm *mySection =
-      OutContext.getWasmSection(SectionName, SectionKind::getMetadata());
-  OutStreamer->SwitchSection(mySection);
+   
+  bool has_import = false;
+  bool has_abi    = false;
+  bool has_eosio_action = false;
+  bool has_eosio_notify = false;
   for (const auto &F : M) {
-     if (F.hasFnAttribute("eosio_wasm_import")) {
-        OutStreamer->EmitULEB128IntValue(F.getName().size());
-        OutStreamer->EmitBytes(F.getName());
-     }
+     if (F.hasFnAttribute("eosio_wasm_import"))
+        has_import = true;
+     if (F.hasFnAttribute("eosio_wasm_abi"))
+        has_abi = true;
+     if (F.hasFnAttribute("eosio_wasm_action"))
+        has_eosio_action = true;
+     if (F.hasFnAttribute("eosio_wasm_notify"))
+        has_eosio_notify = true;
   }
-  OutStreamer->PopSection();
+
+  if (has_import) {
+     OutStreamer->PushSection();
+     std::string SectionName = ".imports";
+     MCSectionWasm *mySection =
+         OutContext.getWasmSection(SectionName, SectionKind::getMetadata());
+     OutStreamer->SwitchSection(mySection);
+     for (const auto &F : M) {
+        if (F.hasFnAttribute("eosio_wasm_import")) {
+           OutStreamer->EmitULEB128IntValue(F.getName().size());
+           OutStreamer->EmitBytes(F.getName());
+        }
+     }
+     OutStreamer->PopSection();
+  }
+  if (has_abi) {
+     OutStreamer->PushSection(); 
+     std::string SectionName = ".eosio_abi";
+     MCSectionWasm *mySection =
+         OutContext.getWasmSection(SectionName, SectionKind::getMetadata());
+     OutStreamer->SwitchSection(mySection);
+     for (const auto &F : M) {
+        if (F.hasFnAttribute("eosio_wasm_abi")) {
+           StringRef abi = F.getFnAttribute("eosio_wasm_abi").getValueAsString();
+           OutStreamer->EmitULEB128IntValue(abi.size());
+           OutStreamer->EmitBytes(abi);
+        }
+     }
+     OutStreamer->PopSection();
+  }
+  if (has_eosio_action) {
+     OutStreamer->PushSection(); 
+     std::string SectionName = ".eosio_actions";
+     MCSectionWasm *mySection =
+         OutContext.getWasmSection(SectionName, SectionKind::getMetadata());
+     OutStreamer->SwitchSection(mySection);
+     for (const auto &F : M) {
+        if (F.hasFnAttribute("eosio_wasm_action")) {
+           StringRef action_name = F.getFnAttribute("eosio_wasm_action").getValueAsString();
+           OutStreamer->EmitULEB128IntValue(action_name.size());
+           OutStreamer->EmitBytes(action_name);
+        }
+     }
+     OutStreamer->PopSection();
+  }
+  if (has_eosio_notify) {
+     OutStreamer->PushSection(); 
+     std::string SectionName = ".eosio_notify";
+     MCSectionWasm *mySection =
+         OutContext.getWasmSection(SectionName, SectionKind::getMetadata());
+     OutStreamer->SwitchSection(mySection);
+     for (const auto &F : M) {
+        if (F.hasFnAttribute("eosio_wasm_notify")) {
+           StringRef name = F.getFnAttribute("eosio_wasm_notify").getValueAsString();
+           OutStreamer->EmitULEB128IntValue(name.size());
+           OutStreamer->EmitBytes(name);
+        }
+     }
+     OutStreamer->PopSection();
+  }
+
 }
 
 void WebAssemblyAsmPrinter::EmitConstantPool() {
