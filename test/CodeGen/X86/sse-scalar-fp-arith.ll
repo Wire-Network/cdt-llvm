@@ -81,29 +81,15 @@ define <4 x float> @test_div_ss(<4 x float> %a, <4 x float> %b) {
 }
 
 define <4 x float> @test_sqrt_ss(<4 x float> %a) {
-; SSE2-LABEL: test_sqrt_ss:
-; SSE2:       # %bb.0:
-; SSE2-NEXT:    sqrtss %xmm0, %xmm1
-; SSE2-NEXT:    movss {{.*#+}} xmm0 = xmm1[0],xmm0[1,2,3]
-; SSE2-NEXT:    ret{{[l|q]}}
+; SSE-LABEL: test_sqrt_ss:
+; SSE:       # %bb.0:
+; SSE-NEXT:    sqrtss %xmm0, %xmm0
+; SSE-NEXT:    ret{{[l|q]}}
 ;
-; SSE41-LABEL: test_sqrt_ss:
-; SSE41:       # %bb.0:
-; SSE41-NEXT:    sqrtss %xmm0, %xmm1
-; SSE41-NEXT:    blendps {{.*#+}} xmm0 = xmm1[0],xmm0[1,2,3]
-; SSE41-NEXT:    ret{{[l|q]}}
-;
-; AVX1-LABEL: test_sqrt_ss:
-; AVX1:       # %bb.0:
-; AVX1-NEXT:    vsqrtss %xmm0, %xmm0, %xmm1
-; AVX1-NEXT:    vblendps {{.*#+}} xmm0 = xmm1[0],xmm0[1,2,3]
-; AVX1-NEXT:    ret{{[l|q]}}
-;
-; AVX512-LABEL: test_sqrt_ss:
-; AVX512:       # %bb.0:
-; AVX512-NEXT:    vsqrtss %xmm0, %xmm0, %xmm1
-; AVX512-NEXT:    vmovss {{.*#+}} xmm0 = xmm1[0],xmm0[1,2,3]
-; AVX512-NEXT:    ret{{[l|q]}}
+; AVX-LABEL: test_sqrt_ss:
+; AVX:       # %bb.0:
+; AVX-NEXT:    vsqrtss %xmm0, %xmm0, %xmm0
+; AVX-NEXT:    ret{{[l|q]}}
   %1 = extractelement <4 x float> %a, i32 0
   %2 = call float @llvm.sqrt.f32(float %1)
   %3 = insertelement <4 x float> %a, float %2, i32 0
@@ -180,29 +166,15 @@ define <2 x double> @test_div_sd(<2 x double> %a, <2 x double> %b) {
 }
 
 define <2 x double> @test_sqrt_sd(<2 x double> %a) {
-; SSE2-LABEL: test_sqrt_sd:
-; SSE2:       # %bb.0:
-; SSE2-NEXT:    sqrtsd %xmm0, %xmm1
-; SSE2-NEXT:    movsd {{.*#+}} xmm0 = xmm1[0],xmm0[1]
-; SSE2-NEXT:    ret{{[l|q]}}
+; SSE-LABEL: test_sqrt_sd:
+; SSE:       # %bb.0:
+; SSE-NEXT:    sqrtsd %xmm0, %xmm0
+; SSE-NEXT:    ret{{[l|q]}}
 ;
-; SSE41-LABEL: test_sqrt_sd:
-; SSE41:       # %bb.0:
-; SSE41-NEXT:    sqrtsd %xmm0, %xmm1
-; SSE41-NEXT:    blendpd {{.*#+}} xmm0 = xmm1[0],xmm0[1]
-; SSE41-NEXT:    ret{{[l|q]}}
-;
-; AVX1-LABEL: test_sqrt_sd:
-; AVX1:       # %bb.0:
-; AVX1-NEXT:    vsqrtsd %xmm0, %xmm0, %xmm1
-; AVX1-NEXT:    vblendpd {{.*#+}} xmm0 = xmm1[0],xmm0[1]
-; AVX1-NEXT:    ret{{[l|q]}}
-;
-; AVX512-LABEL: test_sqrt_sd:
-; AVX512:       # %bb.0:
-; AVX512-NEXT:    vsqrtsd %xmm0, %xmm0, %xmm1
-; AVX512-NEXT:    vmovsd {{.*#+}} xmm0 = xmm1[0],xmm0[1]
-; AVX512-NEXT:    ret{{[l|q]}}
+; AVX-LABEL: test_sqrt_sd:
+; AVX:       # %bb.0:
+; AVX-NEXT:    vsqrtsd %xmm0, %xmm0, %xmm0
+; AVX-NEXT:    ret{{[l|q]}}
   %1 = extractelement <2 x double> %a, i32 0
   %2 = call double @llvm.sqrt.f64(double %1)
   %3 = insertelement <2 x double> %a, double %2, i32 0
@@ -442,14 +414,12 @@ define <4 x float> @test_multiple_div_ss(<4 x float> %a, <4 x float> %b) {
 define <4 x float> @blend_add_ss(<4 x float> %a, float %b) {
 ; X86-SSE-LABEL: blend_add_ss:
 ; X86-SSE:       # %bb.0:
-; X86-SSE-NEXT:    movss {{.*#+}} xmm1 = mem[0],zero,zero,zero
-; X86-SSE-NEXT:    addss %xmm1, %xmm0
+; X86-SSE-NEXT:    addss {{[0-9]+}}(%esp), %xmm0
 ; X86-SSE-NEXT:    retl
 ;
 ; X86-AVX-LABEL: blend_add_ss:
 ; X86-AVX:       # %bb.0:
-; X86-AVX-NEXT:    vmovss {{.*#+}} xmm1 = mem[0],zero,zero,zero
-; X86-AVX-NEXT:    vaddss %xmm1, %xmm0, %xmm0
+; X86-AVX-NEXT:    vaddss {{[0-9]+}}(%esp), %xmm0, %xmm0
 ; X86-AVX-NEXT:    retl
 ;
 ; X64-SSE-LABEL: blend_add_ss:
@@ -472,14 +442,12 @@ define <4 x float> @blend_add_ss(<4 x float> %a, float %b) {
 define <4 x float> @blend_sub_ss(<4 x float> %a, float %b) {
 ; X86-SSE-LABEL: blend_sub_ss:
 ; X86-SSE:       # %bb.0:
-; X86-SSE-NEXT:    movss {{.*#+}} xmm1 = mem[0],zero,zero,zero
-; X86-SSE-NEXT:    subss %xmm1, %xmm0
+; X86-SSE-NEXT:    subss {{[0-9]+}}(%esp), %xmm0
 ; X86-SSE-NEXT:    retl
 ;
 ; X86-AVX-LABEL: blend_sub_ss:
 ; X86-AVX:       # %bb.0:
-; X86-AVX-NEXT:    vmovss {{.*#+}} xmm1 = mem[0],zero,zero,zero
-; X86-AVX-NEXT:    vsubss %xmm1, %xmm0, %xmm0
+; X86-AVX-NEXT:    vsubss {{[0-9]+}}(%esp), %xmm0, %xmm0
 ; X86-AVX-NEXT:    retl
 ;
 ; X64-SSE-LABEL: blend_sub_ss:
@@ -502,14 +470,12 @@ define <4 x float> @blend_sub_ss(<4 x float> %a, float %b) {
 define <4 x float> @blend_mul_ss(<4 x float> %a, float %b) {
 ; X86-SSE-LABEL: blend_mul_ss:
 ; X86-SSE:       # %bb.0:
-; X86-SSE-NEXT:    movss {{.*#+}} xmm1 = mem[0],zero,zero,zero
-; X86-SSE-NEXT:    mulss %xmm1, %xmm0
+; X86-SSE-NEXT:    mulss {{[0-9]+}}(%esp), %xmm0
 ; X86-SSE-NEXT:    retl
 ;
 ; X86-AVX-LABEL: blend_mul_ss:
 ; X86-AVX:       # %bb.0:
-; X86-AVX-NEXT:    vmovss {{.*#+}} xmm1 = mem[0],zero,zero,zero
-; X86-AVX-NEXT:    vmulss %xmm1, %xmm0, %xmm0
+; X86-AVX-NEXT:    vmulss {{[0-9]+}}(%esp), %xmm0, %xmm0
 ; X86-AVX-NEXT:    retl
 ;
 ; X64-SSE-LABEL: blend_mul_ss:
@@ -532,14 +498,12 @@ define <4 x float> @blend_mul_ss(<4 x float> %a, float %b) {
 define <4 x float> @blend_div_ss(<4 x float> %a, float %b) {
 ; X86-SSE-LABEL: blend_div_ss:
 ; X86-SSE:       # %bb.0:
-; X86-SSE-NEXT:    movss {{.*#+}} xmm1 = mem[0],zero,zero,zero
-; X86-SSE-NEXT:    divss %xmm1, %xmm0
+; X86-SSE-NEXT:    divss {{[0-9]+}}(%esp), %xmm0
 ; X86-SSE-NEXT:    retl
 ;
 ; X86-AVX-LABEL: blend_div_ss:
 ; X86-AVX:       # %bb.0:
-; X86-AVX-NEXT:    vmovss {{.*#+}} xmm1 = mem[0],zero,zero,zero
-; X86-AVX-NEXT:    vdivss %xmm1, %xmm0, %xmm0
+; X86-AVX-NEXT:    vdivss {{[0-9]+}}(%esp), %xmm0, %xmm0
 ; X86-AVX-NEXT:    retl
 ;
 ; X64-SSE-LABEL: blend_div_ss:
@@ -562,14 +526,12 @@ define <4 x float> @blend_div_ss(<4 x float> %a, float %b) {
 define <2 x double> @blend_add_sd(<2 x double> %a, double %b) {
 ; X86-SSE-LABEL: blend_add_sd:
 ; X86-SSE:       # %bb.0:
-; X86-SSE-NEXT:    movsd {{.*#+}} xmm1 = mem[0],zero
-; X86-SSE-NEXT:    addsd %xmm1, %xmm0
+; X86-SSE-NEXT:    addsd {{[0-9]+}}(%esp), %xmm0
 ; X86-SSE-NEXT:    retl
 ;
 ; X86-AVX-LABEL: blend_add_sd:
 ; X86-AVX:       # %bb.0:
-; X86-AVX-NEXT:    vmovsd {{.*#+}} xmm1 = mem[0],zero
-; X86-AVX-NEXT:    vaddsd %xmm1, %xmm0, %xmm0
+; X86-AVX-NEXT:    vaddsd {{[0-9]+}}(%esp), %xmm0, %xmm0
 ; X86-AVX-NEXT:    retl
 ;
 ; X64-SSE-LABEL: blend_add_sd:
@@ -592,14 +554,12 @@ define <2 x double> @blend_add_sd(<2 x double> %a, double %b) {
 define <2 x double> @blend_sub_sd(<2 x double> %a, double %b) {
 ; X86-SSE-LABEL: blend_sub_sd:
 ; X86-SSE:       # %bb.0:
-; X86-SSE-NEXT:    movsd {{.*#+}} xmm1 = mem[0],zero
-; X86-SSE-NEXT:    subsd %xmm1, %xmm0
+; X86-SSE-NEXT:    subsd {{[0-9]+}}(%esp), %xmm0
 ; X86-SSE-NEXT:    retl
 ;
 ; X86-AVX-LABEL: blend_sub_sd:
 ; X86-AVX:       # %bb.0:
-; X86-AVX-NEXT:    vmovsd {{.*#+}} xmm1 = mem[0],zero
-; X86-AVX-NEXT:    vsubsd %xmm1, %xmm0, %xmm0
+; X86-AVX-NEXT:    vsubsd {{[0-9]+}}(%esp), %xmm0, %xmm0
 ; X86-AVX-NEXT:    retl
 ;
 ; X64-SSE-LABEL: blend_sub_sd:
@@ -622,14 +582,12 @@ define <2 x double> @blend_sub_sd(<2 x double> %a, double %b) {
 define <2 x double> @blend_mul_sd(<2 x double> %a, double %b) {
 ; X86-SSE-LABEL: blend_mul_sd:
 ; X86-SSE:       # %bb.0:
-; X86-SSE-NEXT:    movsd {{.*#+}} xmm1 = mem[0],zero
-; X86-SSE-NEXT:    mulsd %xmm1, %xmm0
+; X86-SSE-NEXT:    mulsd {{[0-9]+}}(%esp), %xmm0
 ; X86-SSE-NEXT:    retl
 ;
 ; X86-AVX-LABEL: blend_mul_sd:
 ; X86-AVX:       # %bb.0:
-; X86-AVX-NEXT:    vmovsd {{.*#+}} xmm1 = mem[0],zero
-; X86-AVX-NEXT:    vmulsd %xmm1, %xmm0, %xmm0
+; X86-AVX-NEXT:    vmulsd {{[0-9]+}}(%esp), %xmm0, %xmm0
 ; X86-AVX-NEXT:    retl
 ;
 ; X64-SSE-LABEL: blend_mul_sd:
@@ -652,14 +610,12 @@ define <2 x double> @blend_mul_sd(<2 x double> %a, double %b) {
 define <2 x double> @blend_div_sd(<2 x double> %a, double %b) {
 ; X86-SSE-LABEL: blend_div_sd:
 ; X86-SSE:       # %bb.0:
-; X86-SSE-NEXT:    movsd {{.*#+}} xmm1 = mem[0],zero
-; X86-SSE-NEXT:    divsd %xmm1, %xmm0
+; X86-SSE-NEXT:    divsd {{[0-9]+}}(%esp), %xmm0
 ; X86-SSE-NEXT:    retl
 ;
 ; X86-AVX-LABEL: blend_div_sd:
 ; X86-AVX:       # %bb.0:
-; X86-AVX-NEXT:    vmovsd {{.*#+}} xmm1 = mem[0],zero
-; X86-AVX-NEXT:    vdivsd %xmm1, %xmm0, %xmm0
+; X86-AVX-NEXT:    vdivsd {{[0-9]+}}(%esp), %xmm0, %xmm0
 ; X86-AVX-NEXT:    retl
 ;
 ; X64-SSE-LABEL: blend_div_sd:
@@ -1178,15 +1134,167 @@ define <2 x double> @insert_test4_div_sd(<2 x double> %a, <2 x double> %b) {
   ret <2 x double> %2
 }
 
+define <4 x float> @insert_test5_add_ss(<4 x float> %a, <4 x float> %b) {
+; SSE-LABEL: insert_test5_add_ss:
+; SSE:       # %bb.0:
+; SSE-NEXT:    addss %xmm1, %xmm0
+; SSE-NEXT:    ret{{[l|q]}}
+;
+; AVX-LABEL: insert_test5_add_ss:
+; AVX:       # %bb.0:
+; AVX-NEXT:    vaddss %xmm1, %xmm0, %xmm0
+; AVX-NEXT:    ret{{[l|q]}}
+  %1 = fadd <4 x float> %b, %a
+  %2 = shufflevector <4 x float> %1, <4 x float> %a, <4 x i32> <i32 0, i32 5, i32 6, i32 7>
+  ret <4 x float> %2
+}
+
+define <4 x float> @insert_test5_sub_ss(<4 x float> %a, <4 x float> %b) {
+; SSE2-LABEL: insert_test5_sub_ss:
+; SSE2:       # %bb.0:
+; SSE2-NEXT:    subps %xmm0, %xmm1
+; SSE2-NEXT:    movss {{.*#+}} xmm0 = xmm1[0],xmm0[1,2,3]
+; SSE2-NEXT:    ret{{[l|q]}}
+;
+; SSE41-LABEL: insert_test5_sub_ss:
+; SSE41:       # %bb.0:
+; SSE41-NEXT:    subps %xmm0, %xmm1
+; SSE41-NEXT:    blendps {{.*#+}} xmm0 = xmm1[0],xmm0[1,2,3]
+; SSE41-NEXT:    ret{{[l|q]}}
+;
+; AVX-LABEL: insert_test5_sub_ss:
+; AVX:       # %bb.0:
+; AVX-NEXT:    vsubps %xmm0, %xmm1, %xmm1
+; AVX-NEXT:    vblendps {{.*#+}} xmm0 = xmm1[0],xmm0[1,2,3]
+; AVX-NEXT:    ret{{[l|q]}}
+  %1 = fsub <4 x float> %b, %a
+  %2 = shufflevector <4 x float> %1, <4 x float> %a, <4 x i32> <i32 0, i32 5, i32 6, i32 7>
+  ret <4 x float> %2
+}
+
+define <4 x float> @insert_test5_mul_ss(<4 x float> %a, <4 x float> %b) {
+; SSE-LABEL: insert_test5_mul_ss:
+; SSE:       # %bb.0:
+; SSE-NEXT:    mulss %xmm1, %xmm0
+; SSE-NEXT:    ret{{[l|q]}}
+;
+; AVX-LABEL: insert_test5_mul_ss:
+; AVX:       # %bb.0:
+; AVX-NEXT:    vmulss %xmm1, %xmm0, %xmm0
+; AVX-NEXT:    ret{{[l|q]}}
+  %1 = fmul <4 x float> %b, %a
+  %2 = shufflevector <4 x float> %1, <4 x float> %a, <4 x i32> <i32 0, i32 5, i32 6, i32 7>
+  ret <4 x float> %2
+}
+
+define <4 x float> @insert_test5_div_ss(<4 x float> %a, <4 x float> %b) {
+; SSE2-LABEL: insert_test5_div_ss:
+; SSE2:       # %bb.0:
+; SSE2-NEXT:    divps %xmm0, %xmm1
+; SSE2-NEXT:    movss {{.*#+}} xmm0 = xmm1[0],xmm0[1,2,3]
+; SSE2-NEXT:    ret{{[l|q]}}
+;
+; SSE41-LABEL: insert_test5_div_ss:
+; SSE41:       # %bb.0:
+; SSE41-NEXT:    divps %xmm0, %xmm1
+; SSE41-NEXT:    blendps {{.*#+}} xmm0 = xmm1[0],xmm0[1,2,3]
+; SSE41-NEXT:    ret{{[l|q]}}
+;
+; AVX-LABEL: insert_test5_div_ss:
+; AVX:       # %bb.0:
+; AVX-NEXT:    vdivps %xmm0, %xmm1, %xmm1
+; AVX-NEXT:    vblendps {{.*#+}} xmm0 = xmm1[0],xmm0[1,2,3]
+; AVX-NEXT:    ret{{[l|q]}}
+  %1 = fdiv <4 x float> %b, %a
+  %2 = shufflevector <4 x float> %1, <4 x float> %a, <4 x i32> <i32 0, i32 5, i32 6, i32 7>
+  ret <4 x float> %2
+}
+
+define <2 x double> @insert_test5_add_sd(<2 x double> %a, <2 x double> %b) {
+; SSE-LABEL: insert_test5_add_sd:
+; SSE:       # %bb.0:
+; SSE-NEXT:    addsd %xmm1, %xmm0
+; SSE-NEXT:    ret{{[l|q]}}
+;
+; AVX-LABEL: insert_test5_add_sd:
+; AVX:       # %bb.0:
+; AVX-NEXT:    vaddsd %xmm1, %xmm0, %xmm0
+; AVX-NEXT:    ret{{[l|q]}}
+  %1 = fadd <2 x double> %b, %a
+  %2 = shufflevector <2 x double> %1, <2 x double> %a, <2 x i32> <i32 0, i32 3>
+  ret <2 x double> %2
+}
+
+define <2 x double> @insert_test5_sub_sd(<2 x double> %a, <2 x double> %b) {
+; SSE2-LABEL: insert_test5_sub_sd:
+; SSE2:       # %bb.0:
+; SSE2-NEXT:    subpd %xmm0, %xmm1
+; SSE2-NEXT:    movsd {{.*#+}} xmm0 = xmm1[0],xmm0[1]
+; SSE2-NEXT:    ret{{[l|q]}}
+;
+; SSE41-LABEL: insert_test5_sub_sd:
+; SSE41:       # %bb.0:
+; SSE41-NEXT:    subpd %xmm0, %xmm1
+; SSE41-NEXT:    blendpd {{.*#+}} xmm0 = xmm1[0],xmm0[1]
+; SSE41-NEXT:    ret{{[l|q]}}
+;
+; AVX-LABEL: insert_test5_sub_sd:
+; AVX:       # %bb.0:
+; AVX-NEXT:    vsubpd %xmm0, %xmm1, %xmm1
+; AVX-NEXT:    vblendpd {{.*#+}} xmm0 = xmm1[0],xmm0[1]
+; AVX-NEXT:    ret{{[l|q]}}
+  %1 = fsub <2 x double> %b, %a
+  %2 = shufflevector <2 x double> %1, <2 x double> %a, <2 x i32> <i32 0, i32 3>
+  ret <2 x double> %2
+}
+
+define <2 x double> @insert_test5_mul_sd(<2 x double> %a, <2 x double> %b) {
+; SSE-LABEL: insert_test5_mul_sd:
+; SSE:       # %bb.0:
+; SSE-NEXT:    mulsd %xmm1, %xmm0
+; SSE-NEXT:    ret{{[l|q]}}
+;
+; AVX-LABEL: insert_test5_mul_sd:
+; AVX:       # %bb.0:
+; AVX-NEXT:    vmulsd %xmm1, %xmm0, %xmm0
+; AVX-NEXT:    ret{{[l|q]}}
+  %1 = fmul <2 x double> %b, %a
+  %2 = shufflevector <2 x double> %1, <2 x double> %a, <2 x i32> <i32 0, i32 3>
+  ret <2 x double> %2
+}
+
+define <2 x double> @insert_test5_div_sd(<2 x double> %a, <2 x double> %b) {
+; SSE2-LABEL: insert_test5_div_sd:
+; SSE2:       # %bb.0:
+; SSE2-NEXT:    divpd %xmm0, %xmm1
+; SSE2-NEXT:    movsd {{.*#+}} xmm0 = xmm1[0],xmm0[1]
+; SSE2-NEXT:    ret{{[l|q]}}
+;
+; SSE41-LABEL: insert_test5_div_sd:
+; SSE41:       # %bb.0:
+; SSE41-NEXT:    divpd %xmm0, %xmm1
+; SSE41-NEXT:    blendpd {{.*#+}} xmm0 = xmm1[0],xmm0[1]
+; SSE41-NEXT:    ret{{[l|q]}}
+;
+; AVX-LABEL: insert_test5_div_sd:
+; AVX:       # %bb.0:
+; AVX-NEXT:    vdivpd %xmm0, %xmm1, %xmm1
+; AVX-NEXT:    vblendpd {{.*#+}} xmm0 = xmm1[0],xmm0[1]
+; AVX-NEXT:    ret{{[l|q]}}
+  %1 = fdiv <2 x double> %b, %a
+  %2 = shufflevector <2 x double> %1, <2 x double> %a, <2 x i32> <i32 0, i32 3>
+  ret <2 x double> %2
+}
+
 define <4 x float> @add_ss_mask(<4 x float> %a, <4 x float> %b, <4 x float> %c, i8 %mask) {
 ; X86-SSE2-LABEL: add_ss_mask:
 ; X86-SSE2:       # %bb.0:
 ; X86-SSE2-NEXT:    testb $1, {{[0-9]+}}(%esp)
-; X86-SSE2-NEXT:    jne .LBB62_1
+; X86-SSE2-NEXT:    jne .LBB70_1
 ; X86-SSE2-NEXT:  # %bb.2:
 ; X86-SSE2-NEXT:    movss {{.*#+}} xmm0 = xmm2[0],xmm0[1,2,3]
 ; X86-SSE2-NEXT:    retl
-; X86-SSE2-NEXT:  .LBB62_1:
+; X86-SSE2-NEXT:  .LBB70_1:
 ; X86-SSE2-NEXT:    addss %xmm0, %xmm1
 ; X86-SSE2-NEXT:    movss {{.*#+}} xmm0 = xmm1[0],xmm0[1,2,3]
 ; X86-SSE2-NEXT:    retl
@@ -1194,11 +1302,11 @@ define <4 x float> @add_ss_mask(<4 x float> %a, <4 x float> %b, <4 x float> %c, 
 ; X86-SSE41-LABEL: add_ss_mask:
 ; X86-SSE41:       # %bb.0:
 ; X86-SSE41-NEXT:    testb $1, {{[0-9]+}}(%esp)
-; X86-SSE41-NEXT:    jne .LBB62_1
+; X86-SSE41-NEXT:    jne .LBB70_1
 ; X86-SSE41-NEXT:  # %bb.2:
 ; X86-SSE41-NEXT:    blendps {{.*#+}} xmm0 = xmm2[0],xmm0[1,2,3]
 ; X86-SSE41-NEXT:    retl
-; X86-SSE41-NEXT:  .LBB62_1:
+; X86-SSE41-NEXT:  .LBB70_1:
 ; X86-SSE41-NEXT:    addss %xmm0, %xmm1
 ; X86-SSE41-NEXT:    blendps {{.*#+}} xmm0 = xmm1[0],xmm0[1,2,3]
 ; X86-SSE41-NEXT:    retl
@@ -1206,10 +1314,10 @@ define <4 x float> @add_ss_mask(<4 x float> %a, <4 x float> %b, <4 x float> %c, 
 ; X86-AVX1-LABEL: add_ss_mask:
 ; X86-AVX1:       # %bb.0:
 ; X86-AVX1-NEXT:    testb $1, {{[0-9]+}}(%esp)
-; X86-AVX1-NEXT:    je .LBB62_2
+; X86-AVX1-NEXT:    je .LBB70_2
 ; X86-AVX1-NEXT:  # %bb.1:
 ; X86-AVX1-NEXT:    vaddss %xmm1, %xmm0, %xmm2
-; X86-AVX1-NEXT:  .LBB62_2:
+; X86-AVX1-NEXT:  .LBB70_2:
 ; X86-AVX1-NEXT:    vblendps {{.*#+}} xmm0 = xmm2[0],xmm0[1,2,3]
 ; X86-AVX1-NEXT:    retl
 ;
@@ -1224,11 +1332,11 @@ define <4 x float> @add_ss_mask(<4 x float> %a, <4 x float> %b, <4 x float> %c, 
 ; X64-SSE2-LABEL: add_ss_mask:
 ; X64-SSE2:       # %bb.0:
 ; X64-SSE2-NEXT:    testb $1, %dil
-; X64-SSE2-NEXT:    jne .LBB62_1
+; X64-SSE2-NEXT:    jne .LBB70_1
 ; X64-SSE2-NEXT:  # %bb.2:
 ; X64-SSE2-NEXT:    movss {{.*#+}} xmm0 = xmm2[0],xmm0[1,2,3]
 ; X64-SSE2-NEXT:    retq
-; X64-SSE2-NEXT:  .LBB62_1:
+; X64-SSE2-NEXT:  .LBB70_1:
 ; X64-SSE2-NEXT:    addss %xmm0, %xmm1
 ; X64-SSE2-NEXT:    movss {{.*#+}} xmm0 = xmm1[0],xmm0[1,2,3]
 ; X64-SSE2-NEXT:    retq
@@ -1236,11 +1344,11 @@ define <4 x float> @add_ss_mask(<4 x float> %a, <4 x float> %b, <4 x float> %c, 
 ; X64-SSE41-LABEL: add_ss_mask:
 ; X64-SSE41:       # %bb.0:
 ; X64-SSE41-NEXT:    testb $1, %dil
-; X64-SSE41-NEXT:    jne .LBB62_1
+; X64-SSE41-NEXT:    jne .LBB70_1
 ; X64-SSE41-NEXT:  # %bb.2:
 ; X64-SSE41-NEXT:    blendps {{.*#+}} xmm0 = xmm2[0],xmm0[1,2,3]
 ; X64-SSE41-NEXT:    retq
-; X64-SSE41-NEXT:  .LBB62_1:
+; X64-SSE41-NEXT:  .LBB70_1:
 ; X64-SSE41-NEXT:    addss %xmm0, %xmm1
 ; X64-SSE41-NEXT:    blendps {{.*#+}} xmm0 = xmm1[0],xmm0[1,2,3]
 ; X64-SSE41-NEXT:    retq
@@ -1248,10 +1356,10 @@ define <4 x float> @add_ss_mask(<4 x float> %a, <4 x float> %b, <4 x float> %c, 
 ; X64-AVX1-LABEL: add_ss_mask:
 ; X64-AVX1:       # %bb.0:
 ; X64-AVX1-NEXT:    testb $1, %dil
-; X64-AVX1-NEXT:    je .LBB62_2
+; X64-AVX1-NEXT:    je .LBB70_2
 ; X64-AVX1-NEXT:  # %bb.1:
 ; X64-AVX1-NEXT:    vaddss %xmm1, %xmm0, %xmm2
-; X64-AVX1-NEXT:  .LBB62_2:
+; X64-AVX1-NEXT:  .LBB70_2:
 ; X64-AVX1-NEXT:    vblendps {{.*#+}} xmm0 = xmm2[0],xmm0[1,2,3]
 ; X64-AVX1-NEXT:    retq
 ;
@@ -1276,11 +1384,11 @@ define <2 x double> @add_sd_mask(<2 x double> %a, <2 x double> %b, <2 x double> 
 ; X86-SSE2-LABEL: add_sd_mask:
 ; X86-SSE2:       # %bb.0:
 ; X86-SSE2-NEXT:    testb $1, {{[0-9]+}}(%esp)
-; X86-SSE2-NEXT:    jne .LBB63_1
+; X86-SSE2-NEXT:    jne .LBB71_1
 ; X86-SSE2-NEXT:  # %bb.2:
 ; X86-SSE2-NEXT:    movsd {{.*#+}} xmm0 = xmm2[0],xmm0[1]
 ; X86-SSE2-NEXT:    retl
-; X86-SSE2-NEXT:  .LBB63_1:
+; X86-SSE2-NEXT:  .LBB71_1:
 ; X86-SSE2-NEXT:    addsd %xmm0, %xmm1
 ; X86-SSE2-NEXT:    movsd {{.*#+}} xmm0 = xmm1[0],xmm0[1]
 ; X86-SSE2-NEXT:    retl
@@ -1288,11 +1396,11 @@ define <2 x double> @add_sd_mask(<2 x double> %a, <2 x double> %b, <2 x double> 
 ; X86-SSE41-LABEL: add_sd_mask:
 ; X86-SSE41:       # %bb.0:
 ; X86-SSE41-NEXT:    testb $1, {{[0-9]+}}(%esp)
-; X86-SSE41-NEXT:    jne .LBB63_1
+; X86-SSE41-NEXT:    jne .LBB71_1
 ; X86-SSE41-NEXT:  # %bb.2:
 ; X86-SSE41-NEXT:    blendps {{.*#+}} xmm0 = xmm2[0,1],xmm0[2,3]
 ; X86-SSE41-NEXT:    retl
-; X86-SSE41-NEXT:  .LBB63_1:
+; X86-SSE41-NEXT:  .LBB71_1:
 ; X86-SSE41-NEXT:    addsd %xmm0, %xmm1
 ; X86-SSE41-NEXT:    blendpd {{.*#+}} xmm0 = xmm1[0],xmm0[1]
 ; X86-SSE41-NEXT:    retl
@@ -1300,10 +1408,10 @@ define <2 x double> @add_sd_mask(<2 x double> %a, <2 x double> %b, <2 x double> 
 ; X86-AVX1-LABEL: add_sd_mask:
 ; X86-AVX1:       # %bb.0:
 ; X86-AVX1-NEXT:    testb $1, {{[0-9]+}}(%esp)
-; X86-AVX1-NEXT:    je .LBB63_2
+; X86-AVX1-NEXT:    je .LBB71_2
 ; X86-AVX1-NEXT:  # %bb.1:
 ; X86-AVX1-NEXT:    vaddsd %xmm1, %xmm0, %xmm2
-; X86-AVX1-NEXT:  .LBB63_2:
+; X86-AVX1-NEXT:  .LBB71_2:
 ; X86-AVX1-NEXT:    vblendpd {{.*#+}} xmm0 = xmm2[0],xmm0[1]
 ; X86-AVX1-NEXT:    retl
 ;
@@ -1318,11 +1426,11 @@ define <2 x double> @add_sd_mask(<2 x double> %a, <2 x double> %b, <2 x double> 
 ; X64-SSE2-LABEL: add_sd_mask:
 ; X64-SSE2:       # %bb.0:
 ; X64-SSE2-NEXT:    testb $1, %dil
-; X64-SSE2-NEXT:    jne .LBB63_1
+; X64-SSE2-NEXT:    jne .LBB71_1
 ; X64-SSE2-NEXT:  # %bb.2:
 ; X64-SSE2-NEXT:    movsd {{.*#+}} xmm0 = xmm2[0],xmm0[1]
 ; X64-SSE2-NEXT:    retq
-; X64-SSE2-NEXT:  .LBB63_1:
+; X64-SSE2-NEXT:  .LBB71_1:
 ; X64-SSE2-NEXT:    addsd %xmm0, %xmm1
 ; X64-SSE2-NEXT:    movsd {{.*#+}} xmm0 = xmm1[0],xmm0[1]
 ; X64-SSE2-NEXT:    retq
@@ -1330,11 +1438,11 @@ define <2 x double> @add_sd_mask(<2 x double> %a, <2 x double> %b, <2 x double> 
 ; X64-SSE41-LABEL: add_sd_mask:
 ; X64-SSE41:       # %bb.0:
 ; X64-SSE41-NEXT:    testb $1, %dil
-; X64-SSE41-NEXT:    jne .LBB63_1
+; X64-SSE41-NEXT:    jne .LBB71_1
 ; X64-SSE41-NEXT:  # %bb.2:
 ; X64-SSE41-NEXT:    blendps {{.*#+}} xmm0 = xmm2[0,1],xmm0[2,3]
 ; X64-SSE41-NEXT:    retq
-; X64-SSE41-NEXT:  .LBB63_1:
+; X64-SSE41-NEXT:  .LBB71_1:
 ; X64-SSE41-NEXT:    addsd %xmm0, %xmm1
 ; X64-SSE41-NEXT:    blendpd {{.*#+}} xmm0 = xmm1[0],xmm0[1]
 ; X64-SSE41-NEXT:    retq
@@ -1342,10 +1450,10 @@ define <2 x double> @add_sd_mask(<2 x double> %a, <2 x double> %b, <2 x double> 
 ; X64-AVX1-LABEL: add_sd_mask:
 ; X64-AVX1:       # %bb.0:
 ; X64-AVX1-NEXT:    testb $1, %dil
-; X64-AVX1-NEXT:    je .LBB63_2
+; X64-AVX1-NEXT:    je .LBB71_2
 ; X64-AVX1-NEXT:  # %bb.1:
 ; X64-AVX1-NEXT:    vaddsd %xmm1, %xmm0, %xmm2
-; X64-AVX1-NEXT:  .LBB63_2:
+; X64-AVX1-NEXT:  .LBB71_2:
 ; X64-AVX1-NEXT:    vblendpd {{.*#+}} xmm0 = xmm2[0],xmm0[1]
 ; X64-AVX1-NEXT:    retq
 ;

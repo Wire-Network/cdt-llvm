@@ -8,12 +8,16 @@
         // Mismatched final register and extend
         add x2, x3, x5, sxtb
         add x2, x4, w2, uxtx
+        add x2, x4, w2, lsl #3
         add w5, w7, x9, sxtx
 // CHECK-ERROR: error: expected 'sxtx' 'uxtx' or 'lsl' with optional integer in range [0, 4]
 // CHECK-ERROR:         add x2, x3, x5, sxtb
 // CHECK-ERROR:                         ^
-// CHECK-ERROR: error: expected '[su]xt[bhw]' or 'lsl' with optional integer in range [0, 4]
+// CHECK-ERROR: error: expected '[su]xt[bhw]' with optional integer in range [0, 4]
 // CHECK-ERROR:         add x2, x4, w2, uxtx
+// CHECK-ERROR:                         ^
+// CHECK-ERROR: error: expected '[su]xt[bhw]' with optional integer in range [0, 4]
+// CHECK-ERROR:         add x2, x4, w2, lsl #3
 // CHECK-ERROR:                         ^
 // CHECK-ERROR: error: expected compatible register, symbol or integer in range [0, 4095]
 // CHECK-ERROR:         add w5, w7, x9, sxtx
@@ -26,7 +30,7 @@
 // CHECK-ERROR: error: expected integer shift amount
 // CHECK-ERROR:         add x9, x10, w11, uxtb #-1
 // CHECK-ERROR:                                 ^
-// CHECK-ERROR: error: expected '[su]xt[bhw]' or 'lsl' with optional integer in range [0, 4]
+// CHECK-ERROR: error: expected '[su]xt[bhw]' with optional integer in range [0, 4]
 // CHECK-ERROR:         add x3, x5, w7, uxtb #5
 // CHECK-ERROR:                         ^
 // CHECK-ERROR: error: expected 'sxtx' 'uxtx' or 'lsl' with optional integer in range [0, 4]
@@ -180,6 +184,11 @@
 // CHECK-ERROR-NEXT:         add x3, x9, #variable-16
 // CHECK-ERROR-NEXT:                 ^
 
+        // Relocation on a sub
+        sub x1, x0, :lo12:loc
+// CHECK-ERROR: error: invalid immediate expression
+// CHECK-ERROR:         sub x1, x0, :lo12:loc
+// CHECK-ERROR:                     ^
 
 
 //------------------------------------------------------------------------------
@@ -3315,10 +3324,19 @@
 //------------------------------------------------------------------------------
 
         adr sp, loc             // expects xzr
+        adr x0, :got:loc        // bad relocation type
+        adr x1, :lo12:loc
         adrp x3, #20            // Immediate unaligned
         adrp w2, loc            // 64-bit register needed
+        adrp x5, :got_lo12:loc  // bad relocation type
 // CHECK-ERROR: error: invalid operand for instruction
 // CHECK-ERROR-NEXT:         adr sp, loc
+// CHECK-ERROR-NEXT:             ^
+// CHECK-ERROR-NEXT: error: unexpected adr label
+// CHECK-ERROR-NEXT:         adr x0, :got:loc
+// CHECK-ERROR-NEXT:             ^
+// CHECK-ERROR-NEXT: error: unexpected adr label
+// CHECK-ERROR-NEXT:         adr x1, :lo12:loc
 // CHECK-ERROR-NEXT:             ^
 // CHECK-ERROR-NEXT: error: expected label or encodable integer pc offset
 // CHECK-ERROR-NEXT:         adrp x3, #20
@@ -3326,6 +3344,9 @@
 // CHECK-ERROR-NEXT: error: invalid operand for instruction
 // CHECK-ERROR-NEXT:         adrp w2, loc
 // CHECK-ERROR-NEXT:              ^
+// CHECK-ERROR-NEXT: error: page or gotpage label reference expected
+// CHECK-ERROR-NEXT:         adrp x5, :got_lo12:loc
+// CHECK-ERROR-NEXT:             ^
 
         adr x9, #1048576
         adr x2, #-1048577

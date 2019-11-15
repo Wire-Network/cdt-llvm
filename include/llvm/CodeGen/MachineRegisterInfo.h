@@ -1,9 +1,8 @@
 //===- llvm/CodeGen/MachineRegisterInfo.h -----------------------*- C++ -*-===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
@@ -562,9 +561,14 @@ public:
   }
 
   /// hasOneNonDBGUse - Return true if there is exactly one non-Debug
-  /// instruction using the specified register.
+  /// use of the specified register.
   bool hasOneNonDBGUse(unsigned RegNo) const;
 
+  /// hasOneNonDBGUse - Return true if there is exactly one non-Debug
+  /// instruction using the specified register. Said instruction may have
+  /// multiple uses.
+  bool hasOneNonDBGUser(unsigned RegNo) const;
+  
   /// replaceRegWith - Replace all instances of FromReg with ToReg in the
   /// machine function.  This is like llvm-level X->replaceAllUsesWith(Y),
   /// except that it also changes any definitions of the register as well.
@@ -689,15 +693,14 @@ public:
                                                unsigned MinNumRegs = 0);
 
   /// Constrain the register class or the register bank of the virtual register
-  /// \p Reg to be a common subclass and a common bank of both registers
-  /// provided respectively. Do nothing if any of the attributes (classes,
-  /// banks, or low-level types) of the registers are deemed incompatible, or if
-  /// the resulting register will have a class smaller than before and of size
-  /// less than \p MinNumRegs. Return true if such register attributes exist,
-  /// false otherwise.
+  /// \p Reg (and low-level type) to be a common subclass or a common bank of
+  /// both registers provided respectively (and a common low-level type). Do
+  /// nothing if any of the attributes (classes, banks, or low-level types) of
+  /// the registers are deemed incompatible, or if the resulting register will
+  /// have a class smaller than before and of size less than \p MinNumRegs.
+  /// Return true if such register attributes exist, false otherwise.
   ///
-  /// \note Assumes that each register has either a low-level type or a class
-  /// assigned, but not both. Use this method instead of constrainRegClass and
+  /// \note Use this method instead of constrainRegClass and
   /// RegisterBankInfo::constrainGenericRegister everywhere but SelectionDAG
   /// ISel / FastISel and GlobalISel's InstructionSelect pass respectively.
   bool constrainRegAttrs(unsigned Reg, unsigned ConstrainingReg,
@@ -714,8 +717,12 @@ public:
 
   /// createVirtualRegister - Create and return a new virtual register in the
   /// function with the specified register class.
-  unsigned createVirtualRegister(const TargetRegisterClass *RegClass,
+  Register createVirtualRegister(const TargetRegisterClass *RegClass,
                                  StringRef Name = "");
+
+  /// Create and return a new virtual register in the function with the same
+  /// attributes as the given register.
+  Register cloneVirtualRegister(Register VReg, StringRef Name = "");
 
   /// Get the low-level type of \p Reg or LLT{} if Reg is not a generic
   /// (target independent) virtual register.
@@ -730,7 +737,7 @@ public:
 
   /// Create and return a new generic virtual register with low-level
   /// type \p Ty.
-  unsigned createGenericVirtualRegister(LLT Ty, StringRef Name = "");
+  Register createGenericVirtualRegister(LLT Ty, StringRef Name = "");
 
   /// Remove all types associated to virtual registers (after instruction
   /// selection and constraining of all generic virtual registers).

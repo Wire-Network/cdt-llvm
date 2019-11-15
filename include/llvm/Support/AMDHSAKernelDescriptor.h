@@ -1,9 +1,8 @@
 //===--- AMDHSAKernelDescriptor.h -----------------------------*- C++ -*---===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
@@ -48,7 +47,7 @@
 namespace llvm {
 namespace amdhsa {
 
-// Floating point rounding modes. Must be kept backwards compatible.
+// Floating point rounding modes. Must match hardware definition.
 enum : uint8_t {
   FLOAT_ROUND_MODE_NEAR_EVEN = 0,
   FLOAT_ROUND_MODE_PLUS_INFINITY = 1,
@@ -56,7 +55,7 @@ enum : uint8_t {
   FLOAT_ROUND_MODE_ZERO = 3,
 };
 
-// Floating point denorm modes. Must be kept backwards compatible.
+// Floating point denorm modes. Must match hardware definition.
 enum : uint8_t {
   FLOAT_DENORM_MODE_FLUSH_SRC_DST = 0,
   FLOAT_DENORM_MODE_FLUSH_DST = 1,
@@ -64,7 +63,7 @@ enum : uint8_t {
   FLOAT_DENORM_MODE_FLUSH_NONE = 3,
 };
 
-// System VGPR workitem IDs. Must be kept backwards compatible.
+// System VGPR workitem IDs. Must match hardware definition.
 enum : uint8_t {
   SYSTEM_VGPR_WORKITEM_ID_X = 0,
   SYSTEM_VGPR_WORKITEM_ID_X_Y = 1,
@@ -72,7 +71,7 @@ enum : uint8_t {
   SYSTEM_VGPR_WORKITEM_ID_UNDEFINED = 3,
 };
 
-// Compute program resource register 1. Must be kept backwards compatible.
+// Compute program resource register 1. Must match hardware definition.
 #define COMPUTE_PGM_RSRC1(NAME, SHIFT, WIDTH) \
   AMDHSA_BITS_ENUM_ENTRY(COMPUTE_PGM_RSRC1_ ## NAME, SHIFT, WIDTH)
 enum : int32_t {
@@ -89,12 +88,15 @@ enum : int32_t {
   COMPUTE_PGM_RSRC1(ENABLE_IEEE_MODE, 23, 1),
   COMPUTE_PGM_RSRC1(BULKY, 24, 1),
   COMPUTE_PGM_RSRC1(CDBG_USER, 25, 1),
-  COMPUTE_PGM_RSRC1(FP16_OVFL, 26, 1),
-  COMPUTE_PGM_RSRC1(RESERVED, 27, 5),
+  COMPUTE_PGM_RSRC1(FP16_OVFL, 26, 1),    // GFX9+
+  COMPUTE_PGM_RSRC1(RESERVED0, 27, 2),
+  COMPUTE_PGM_RSRC1(WGP_MODE, 29, 1),     // GFX10+
+  COMPUTE_PGM_RSRC1(MEM_ORDERED, 30, 1),  // GFX10+
+  COMPUTE_PGM_RSRC1(FWD_PROGRESS, 31, 1), // GFX10+
 };
 #undef COMPUTE_PGM_RSRC1
 
-// Compute program resource register 2. Must be kept backwards compatible.
+// Compute program resource register 2. Must match hardware definition.
 #define COMPUTE_PGM_RSRC2(NAME, SHIFT, WIDTH) \
   AMDHSA_BITS_ENUM_ENTRY(COMPUTE_PGM_RSRC2_ ## NAME, SHIFT, WIDTH)
 enum : int32_t {
@@ -116,9 +118,18 @@ enum : int32_t {
   COMPUTE_PGM_RSRC2(ENABLE_EXCEPTION_IEEE_754_FP_UNDERFLOW, 28, 1),
   COMPUTE_PGM_RSRC2(ENABLE_EXCEPTION_IEEE_754_FP_INEXACT, 29, 1),
   COMPUTE_PGM_RSRC2(ENABLE_EXCEPTION_INT_DIVIDE_BY_ZERO, 30, 1),
-  COMPUTE_PGM_RSRC2(RESERVED, 31, 1),
+  COMPUTE_PGM_RSRC2(RESERVED0, 31, 1),
 };
 #undef COMPUTE_PGM_RSRC2
+
+// Compute program resource register 3. Must match hardware definition.
+#define COMPUTE_PGM_RSRC3(NAME, SHIFT, WIDTH) \
+  AMDHSA_BITS_ENUM_ENTRY(COMPUTE_PGM_RSRC3_ ## NAME, SHIFT, WIDTH)
+enum : int32_t {
+  COMPUTE_PGM_RSRC3(SHARED_VGPR_COUNT, 0, 4), // GFX10+
+  COMPUTE_PGM_RSRC3(RESERVED0, 4, 28),
+};
+#undef COMPUTE_PGM_RSRC3
 
 // Kernel code properties. Must be kept backwards compatible.
 #define KERNEL_CODE_PROPERTY(NAME, SHIFT, WIDTH) \
@@ -131,10 +142,9 @@ enum : int32_t {
   KERNEL_CODE_PROPERTY(ENABLE_SGPR_DISPATCH_ID, 4, 1),
   KERNEL_CODE_PROPERTY(ENABLE_SGPR_FLAT_SCRATCH_INIT, 5, 1),
   KERNEL_CODE_PROPERTY(ENABLE_SGPR_PRIVATE_SEGMENT_SIZE, 6, 1),
-  KERNEL_CODE_PROPERTY(ENABLE_SGPR_GRID_WORKGROUP_COUNT_X, 7, 1),
-  KERNEL_CODE_PROPERTY(ENABLE_SGPR_GRID_WORKGROUP_COUNT_Y, 8, 1),
-  KERNEL_CODE_PROPERTY(ENABLE_SGPR_GRID_WORKGROUP_COUNT_Z, 9, 1),
-  KERNEL_CODE_PROPERTY(RESERVED, 10, 6),
+  KERNEL_CODE_PROPERTY(RESERVED0, 7, 3),
+  KERNEL_CODE_PROPERTY(ENABLE_WAVEFRONT_SIZE32, 10, 1), // GFX10+
+  KERNEL_CODE_PROPERTY(RESERVED1, 11, 5),
 };
 #undef KERNEL_CODE_PROPERTY
 
@@ -144,7 +154,8 @@ struct kernel_descriptor_t {
   uint32_t private_segment_fixed_size;
   uint8_t reserved0[8];
   int64_t kernel_code_entry_byte_offset;
-  uint8_t reserved1[24];
+  uint8_t reserved1[20];
+  uint32_t compute_pgm_rsrc3; // GFX10+
   uint32_t compute_pgm_rsrc1;
   uint32_t compute_pgm_rsrc2;
   uint16_t kernel_code_properties;
@@ -169,6 +180,9 @@ static_assert(
 static_assert(
     offsetof(kernel_descriptor_t, reserved1) == 24,
     "invalid offset for reserved1");
+static_assert(
+    offsetof(kernel_descriptor_t, compute_pgm_rsrc3) == 44,
+    "invalid offset for compute_pgm_rsrc3");
 static_assert(
     offsetof(kernel_descriptor_t, compute_pgm_rsrc1) == 48,
     "invalid offset for compute_pgm_rsrc1");

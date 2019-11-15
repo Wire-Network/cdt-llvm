@@ -1,9 +1,8 @@
 //===- BranchFolding.cpp - Fold machine code branch instructions ----------===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
@@ -298,7 +297,7 @@ static unsigned HashEndOfMBB(const MachineBasicBlock &MBB) {
 
 ///  Whether MI should be counted as an instruction when calculating common tail.
 static bool countsAsInstruction(const MachineInstr &MI) {
-  return !(MI.isDebugValue() || MI.isCFIInstruction());
+  return !(MI.isDebugInstr() || MI.isCFIInstruction());
 }
 
 /// ComputeCommonTailLength - Given two machine basic blocks, compute the number
@@ -722,7 +721,7 @@ ProfitableToMerge(MachineBasicBlock *MBB1, MachineBasicBlock *MBB2,
   // branch instruction, which is likely to be smaller than the 2
   // instructions that would be deleted in the merge.
   MachineFunction *MF = MBB1->getParent();
-  return EffectiveTailLen >= 2 && MF->getFunction().optForSize() &&
+  return EffectiveTailLen >= 2 && MF->getFunction().hasOptSize() &&
          (I1 == MBB1->begin() || I2 == MBB2->begin());
 }
 
@@ -865,7 +864,7 @@ mergeOperations(MachineBasicBlock::iterator MBBIStartPos,
 
     // Merge MMOs from memory operations in the common block.
     if (MBBICommon->mayLoad() || MBBICommon->mayStore())
-      MBBICommon->setMemRefs(MBBICommon->mergeMemRefsWith(*MBBI));
+      MBBICommon->cloneMergedMemRefs(*MBB->getParent(), {&*MBBICommon, &*MBBI});
     // Drop undef flags if they aren't present in all merged instructions.
     for (unsigned I = 0, E = MBBICommon->getNumOperands(); I != E; ++I) {
       MachineOperand &MO = MBBICommon->getOperand(I);
@@ -921,11 +920,12 @@ void BranchFolder::mergeCommonTails(unsigned commonTailIndex) {
   if (UpdateLiveIns) {
     LivePhysRegs NewLiveIns(*TRI);
     computeLiveIns(NewLiveIns, *MBB);
+    LiveRegs.init(*TRI);
 
     // The flag merging may lead to some register uses no longer using the
     // <undef> flag, add IMPLICIT_DEFs in the predecessors as necessary.
     for (MachineBasicBlock *Pred : MBB->predecessors()) {
-      LiveRegs.init(*TRI);
+      LiveRegs.clear();
       LiveRegs.addLiveOuts(*Pred);
       MachineBasicBlock::iterator InsertBefore = Pred->getFirstTerminator();
       for (unsigned Reg : NewLiveIns) {
@@ -1070,30 +1070,28 @@ bool BranchFolder::TryTailMergeBlocks(MachineBasicBlock *SuccBB,
 
 bool BranchFolder::TailMergeBlocks(MachineFunction &MF) {
   bool MadeChange = false;
-  if (!EnableTailMerge) return MadeChange;
+  if (!EnableTailMerge)
+    return MadeChange;
 
   // First find blocks with no successors.
-  // Block placement does not create new tail merging opportunities for these
-  // blocks.
-  if (!AfterBlockPlacement) {
-    MergePotentials.clear();
-    for (MachineBasicBlock &MBB : MF) {
-      if (MergePotentials.size() == TailMergeThreshold)
-        break;
-      if (!TriedMerging.count(&MBB) && MBB.succ_empty())
-        MergePotentials.push_back(MergePotentialsElt(HashEndOfMBB(MBB), &MBB));
-    }
-
-    // If this is a large problem, avoid visiting the same basic blocks
-    // multiple times.
+  // Block placement may create new tail merging opportunities for these blocks.
+  MergePotentials.clear();
+  for (MachineBasicBlock &MBB : MF) {
     if (MergePotentials.size() == TailMergeThreshold)
-      for (unsigned i = 0, e = MergePotentials.size(); i != e; ++i)
-        TriedMerging.insert(MergePotentials[i].getBlock());
-
-    // See if we can do any tail merging on those.
-    if (MergePotentials.size() >= 2)
-      MadeChange |= TryTailMergeBlocks(nullptr, nullptr, MinCommonTailLength);
+      break;
+    if (!TriedMerging.count(&MBB) && MBB.succ_empty())
+      MergePotentials.push_back(MergePotentialsElt(HashEndOfMBB(MBB), &MBB));
   }
+
+  // If this is a large problem, avoid visiting the same basic blocks
+  // multiple times.
+  if (MergePotentials.size() == TailMergeThreshold)
+    for (unsigned i = 0, e = MergePotentials.size(); i != e; ++i)
+      TriedMerging.insert(MergePotentials[i].getBlock());
+
+  // See if we can do any tail merging on those.
+  if (MergePotentials.size() >= 2)
+    MadeChange |= TryTailMergeBlocks(nullptr, nullptr, MinCommonTailLength);
 
   // Look at blocks (IBB) with multiple predecessors (PBB).
   // We change each predecessor to a canonical form, by
@@ -1179,29 +1177,6 @@ bool BranchFolder::TailMergeBlocks(MachineFunction &MF) {
             auto Next = ++PBB->getIterator();
             if (Next != MF.end())
               FBB = &*Next;
-          }
-        }
-
-        // Failing case: the only way IBB can be reached from PBB is via
-        // exception handling.  Happens for landing pads.  Would be nice to have
-        // a bit in the edge so we didn't have to do all this.
-        if (IBB->isEHPad()) {
-          MachineFunction::iterator IP = ++PBB->getIterator();
-          MachineBasicBlock *PredNextBB = nullptr;
-          if (IP != MF.end())
-            PredNextBB = &*IP;
-          if (!TBB) {
-            if (IBB != PredNextBB)      // fallthrough
-              continue;
-          } else if (FBB) {
-            if (TBB != IBB && FBB != IBB)   // cbr then ubr
-              continue;
-          } else if (Cond.empty()) {
-            if (TBB != IBB)               // ubr
-              continue;
-          } else {
-            if (TBB != IBB && IBB != PredNextBB)  // cbr
-              continue;
           }
         }
 
@@ -1362,9 +1337,9 @@ static void copyDebugInfoToPredecessor(const TargetInstrInfo *TII,
                                        MachineBasicBlock &PredMBB) {
   auto InsertBefore = PredMBB.getFirstTerminator();
   for (MachineInstr &MI : MBB.instrs())
-    if (MI.isDebugValue()) {
+    if (MI.isDebugInstr()) {
       TII->duplicate(PredMBB, InsertBefore, MI);
-      LLVM_DEBUG(dbgs() << "Copied debug value from empty block to pred: "
+      LLVM_DEBUG(dbgs() << "Copied debug entity from empty block to pred: "
                         << MI);
     }
 }
@@ -1374,9 +1349,9 @@ static void copyDebugInfoToSuccessor(const TargetInstrInfo *TII,
                                      MachineBasicBlock &SuccMBB) {
   auto InsertBefore = SuccMBB.SkipPHIsAndLabels(SuccMBB.begin());
   for (MachineInstr &MI : MBB.instrs())
-    if (MI.isDebugValue()) {
+    if (MI.isDebugInstr()) {
       TII->duplicate(SuccMBB, InsertBefore, MI);
-      LLVM_DEBUG(dbgs() << "Copied debug value from empty block to succ: "
+      LLVM_DEBUG(dbgs() << "Copied debug entity from empty block to succ: "
                         << MI);
     }
 }
@@ -1597,7 +1572,7 @@ ReoptimizeBlock:
   }
 
   if (!IsEmptyBlock(MBB) && MBB->pred_size() == 1 &&
-      MF.getFunction().optForSize()) {
+      MF.getFunction().hasOptSize()) {
     // Changing "Jcc foo; foo: jmp bar;" into "Jcc bar;" might change the branch
     // direction, thereby defeating careful block placement and regressing
     // performance. Therefore, only consider this for optsize functions.

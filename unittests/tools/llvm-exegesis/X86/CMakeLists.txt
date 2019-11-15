@@ -15,8 +15,12 @@ set(LLVM_LINK_COMPONENTS
 
 add_llvm_unittest(LLVMExegesisX86Tests
   AssemblerTest.cpp
-  AnalysisTest.cpp
-  SnippetGeneratorTest.cpp
+  BenchmarkResultTest.cpp
   RegisterAliasingTest.cpp
+  SchedClassResolutionTest.cpp
+  SnippetGeneratorTest.cpp
+  TargetTest.cpp
   )
-target_link_libraries(LLVMExegesisX86Tests PRIVATE LLVMExegesis)
+target_link_libraries(LLVMExegesisX86Tests PRIVATE
+  LLVMExegesis
+  LLVMExegesisX86)

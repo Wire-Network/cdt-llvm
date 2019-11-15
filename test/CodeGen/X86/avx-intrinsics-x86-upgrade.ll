@@ -6,6 +6,36 @@
 
 ; We don't check any vinsertf128 variant with immediate 0 because that's just a blend.
 
+define <4 x double> @test_x86_avx_sqrt_pd_256(<4 x double> %a0) {
+; AVX-LABEL: test_x86_avx_sqrt_pd_256:
+; AVX:       # %bb.0:
+; AVX-NEXT:    vsqrtpd %ymm0, %ymm0 # encoding: [0xc5,0xfd,0x51,0xc0]
+; AVX-NEXT:    ret{{[l|q]}} # encoding: [0xc3]
+;
+; AVX512VL-LABEL: test_x86_avx_sqrt_pd_256:
+; AVX512VL:       # %bb.0:
+; AVX512VL-NEXT:    vsqrtpd %ymm0, %ymm0 # EVEX TO VEX Compression encoding: [0xc5,0xfd,0x51,0xc0]
+; AVX512VL-NEXT:    ret{{[l|q]}} # encoding: [0xc3]
+  %res = call <4 x double> @llvm.x86.avx.sqrt.pd.256(<4 x double> %a0) ; <<4 x double>> [#uses=1]
+  ret <4 x double> %res
+}
+declare <4 x double> @llvm.x86.avx.sqrt.pd.256(<4 x double>) nounwind readnone
+
+define <8 x float> @test_x86_avx_sqrt_ps_256(<8 x float> %a0) {
+; AVX-LABEL: test_x86_avx_sqrt_ps_256:
+; AVX:       # %bb.0:
+; AVX-NEXT:    vsqrtps %ymm0, %ymm0 # encoding: [0xc5,0xfc,0x51,0xc0]
+; AVX-NEXT:    ret{{[l|q]}} # encoding: [0xc3]
+;
+; AVX512VL-LABEL: test_x86_avx_sqrt_ps_256:
+; AVX512VL:       # %bb.0:
+; AVX512VL-NEXT:    vsqrtps %ymm0, %ymm0 # EVEX TO VEX Compression encoding: [0xc5,0xfc,0x51,0xc0]
+; AVX512VL-NEXT:    ret{{[l|q]}} # encoding: [0xc3]
+  %res = call <8 x float> @llvm.x86.avx.sqrt.ps.256(<8 x float> %a0) ; <<8 x float>> [#uses=1]
+  ret <8 x float> %res
+}
+declare <8 x float> @llvm.x86.avx.sqrt.ps.256(<8 x float>) nounwind readnone
+
 define <4 x double> @test_x86_avx_vinsertf128_pd_256_1(<4 x double> %a0, <2 x double> %a1) {
 ; AVX-LABEL: test_x86_avx_vinsertf128_pd_256_1:
 ; AVX:       # %bb.0:
@@ -268,17 +298,11 @@ declare <2 x i64> @llvm.x86.sse2.psrl.dq(<2 x i64>, i32) nounwind readnone
 
 
 define <2 x double> @test_x86_sse41_blendpd(<2 x double> %a0, <2 x double> %a1) {
-; AVX-LABEL: test_x86_sse41_blendpd:
-; AVX:       # %bb.0:
-; AVX-NEXT:    vblendps $3, %xmm0, %xmm1, %xmm0 # encoding: [0xc4,0xe3,0x71,0x0c,0xc0,0x03]
-; AVX-NEXT:    # xmm0 = xmm0[0,1],xmm1[2,3]
-; AVX-NEXT:    ret{{[l|q]}} # encoding: [0xc3]
-;
-; AVX512VL-LABEL: test_x86_sse41_blendpd:
-; AVX512VL:       # %bb.0:
-; AVX512VL-NEXT:    vmovsd %xmm0, %xmm1, %xmm0 # EVEX TO VEX Compression encoding: [0xc5,0xf3,0x10,0xc0]
-; AVX512VL-NEXT:    # xmm0 = xmm0[0],xmm1[1]
-; AVX512VL-NEXT:    ret{{[l|q]}} # encoding: [0xc3]
+; CHECK-LABEL: test_x86_sse41_blendpd:
+; CHECK:       # %bb.0:
+; CHECK-NEXT:    vblendps $3, %xmm0, %xmm1, %xmm0 # encoding: [0xc4,0xe3,0x71,0x0c,0xc0,0x03]
+; CHECK-NEXT:    # xmm0 = xmm0[0,1],xmm1[2,3]
+; CHECK-NEXT:    ret{{[l|q]}} # encoding: [0xc3]
   %res = call <2 x double> @llvm.x86.sse41.blendpd(<2 x double> %a0, <2 x double> %a1, i8 2) ; <<2 x double>> [#uses=1]
   ret <2 x double> %res
 }
@@ -701,12 +725,12 @@ define void @test_x86_avx_storeu_dq_256(i8* %a0, <32 x i8> %a1) {
 ; X86-AVX-LABEL: test_x86_avx_storeu_dq_256:
 ; X86-AVX:       # %bb.0:
 ; X86-AVX-NEXT:    movl {{[0-9]+}}(%esp), %eax # encoding: [0x8b,0x44,0x24,0x04]
-; X86-AVX-NEXT:    vextractf128 $1, %ymm0, %xmm1 # encoding: [0xc4,0xe3,0x7d,0x19,0xc1,0x01]
-; X86-AVX-NEXT:    vpcmpeqd %xmm2, %xmm2, %xmm2 # encoding: [0xc5,0xe9,0x76,0xd2]
-; X86-AVX-NEXT:    vpsubb %xmm2, %xmm1, %xmm1 # encoding: [0xc5,0xf1,0xf8,0xca]
-; X86-AVX-NEXT:    vpsubb %xmm2, %xmm0, %xmm0 # encoding: [0xc5,0xf9,0xf8,0xc2]
-; X86-AVX-NEXT:    vinsertf128 $1, %xmm1, %ymm0, %ymm0 # encoding: [0xc4,0xe3,0x7d,0x18,0xc1,0x01]
-; X86-AVX-NEXT:    vmovups %ymm0, (%eax) # encoding: [0xc5,0xfc,0x11,0x00]
+; X86-AVX-NEXT:    vpcmpeqd %xmm1, %xmm1, %xmm1 # encoding: [0xc5,0xf1,0x76,0xc9]
+; X86-AVX-NEXT:    vpsubb %xmm1, %xmm0, %xmm2 # encoding: [0xc5,0xf9,0xf8,0xd1]
+; X86-AVX-NEXT:    vextractf128 $1, %ymm0, %xmm0 # encoding: [0xc4,0xe3,0x7d,0x19,0xc0,0x01]
+; X86-AVX-NEXT:    vpsubb %xmm1, %xmm0, %xmm0 # encoding: [0xc5,0xf9,0xf8,0xc1]
+; X86-AVX-NEXT:    vmovdqu %xmm0, 16(%eax) # encoding: [0xc5,0xfa,0x7f,0x40,0x10]
+; X86-AVX-NEXT:    vmovdqu %xmm2, (%eax) # encoding: [0xc5,0xfa,0x7f,0x10]
 ; X86-AVX-NEXT:    vzeroupper # encoding: [0xc5,0xf8,0x77]
 ; X86-AVX-NEXT:    retl # encoding: [0xc3]
 ;
@@ -721,12 +745,12 @@ define void @test_x86_avx_storeu_dq_256(i8* %a0, <32 x i8> %a1) {
 ;
 ; X64-AVX-LABEL: test_x86_avx_storeu_dq_256:
 ; X64-AVX:       # %bb.0:
-; X64-AVX-NEXT:    vextractf128 $1, %ymm0, %xmm1 # encoding: [0xc4,0xe3,0x7d,0x19,0xc1,0x01]
-; X64-AVX-NEXT:    vpcmpeqd %xmm2, %xmm2, %xmm2 # encoding: [0xc5,0xe9,0x76,0xd2]
-; X64-AVX-NEXT:    vpsubb %xmm2, %xmm1, %xmm1 # encoding: [0xc5,0xf1,0xf8,0xca]
-; X64-AVX-NEXT:    vpsubb %xmm2, %xmm0, %xmm0 # encoding: [0xc5,0xf9,0xf8,0xc2]
-; X64-AVX-NEXT:    vinsertf128 $1, %xmm1, %ymm0, %ymm0 # encoding: [0xc4,0xe3,0x7d,0x18,0xc1,0x01]
-; X64-AVX-NEXT:    vmovups %ymm0, (%rdi) # encoding: [0xc5,0xfc,0x11,0x07]
+; X64-AVX-NEXT:    vpcmpeqd %xmm1, %xmm1, %xmm1 # encoding: [0xc5,0xf1,0x76,0xc9]
+; X64-AVX-NEXT:    vpsubb %xmm1, %xmm0, %xmm2 # encoding: [0xc5,0xf9,0xf8,0xd1]
+; X64-AVX-NEXT:    vextractf128 $1, %ymm0, %xmm0 # encoding: [0xc4,0xe3,0x7d,0x19,0xc0,0x01]
+; X64-AVX-NEXT:    vpsubb %xmm1, %xmm0, %xmm0 # encoding: [0xc5,0xf9,0xf8,0xc1]
+; X64-AVX-NEXT:    vmovdqu %xmm0, 16(%rdi) # encoding: [0xc5,0xfa,0x7f,0x47,0x10]
+; X64-AVX-NEXT:    vmovdqu %xmm2, (%rdi) # encoding: [0xc5,0xfa,0x7f,0x17]
 ; X64-AVX-NEXT:    vzeroupper # encoding: [0xc5,0xf8,0x77]
 ; X64-AVX-NEXT:    retq # encoding: [0xc3]
 ;

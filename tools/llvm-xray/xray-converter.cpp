@@ -1,9 +1,8 @@
 //===- xray-converter.cpp: XRay Trace Conversion --------------------------===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
@@ -91,9 +90,10 @@ void TraceConverter::exportAsYAML(const Trace &Records, raw_ostream &OS) {
     Trace.Records.push_back({R.RecordType, R.CPU, R.Type, R.FuncId,
                              Symbolize ? FuncIdHelper.SymbolOrNumber(R.FuncId)
                                        : llvm::to_string(R.FuncId),
-                             R.TSC, R.TId, R.CallArgs});
+                             R.TSC, R.TId, R.PId, R.CallArgs, R.Data});
   }
   Output Out(OS, nullptr, 0);
+  Out.setWriteDefaultValues(false);
   Out << Trace;
 }
 
@@ -122,26 +122,37 @@ void TraceConverter::exportAsRAWv1(const Trace &Records, raw_ostream &OS) {
   // Then write out the rest of the records, still in an endian-appropriate
   // format.
   for (const auto &R : Records) {
-    Writer.write(R.RecordType);
-    // The on disk naive raw format uses 8 bit CPUs, but the record has 16.
-    // There's no choice but truncation.
-    Writer.write(static_cast<uint8_t>(R.CPU));
     switch (R.Type) {
     case RecordTypes::ENTER:
     case RecordTypes::ENTER_ARG:
+      Writer.write(R.RecordType);
+      Writer.write(static_cast<uint8_t>(R.CPU));
       Writer.write(uint8_t{0});
       break;
     case RecordTypes::EXIT:
+      Writer.write(R.RecordType);
+      Writer.write(static_cast<uint8_t>(R.CPU));
       Writer.write(uint8_t{1});
       break;
     case RecordTypes::TAIL_EXIT:
+      Writer.write(R.RecordType);
+      Writer.write(static_cast<uint8_t>(R.CPU));
       Writer.write(uint8_t{2});
       break;
+    case RecordTypes::CUSTOM_EVENT:
+    case RecordTypes::TYPED_EVENT:
+      // Skip custom and typed event records for v1 logs.
+      continue;
     }
     Writer.write(R.FuncId);
     Writer.write(R.TSC);
     Writer.write(R.TId);
-    Writer.write(Padding4B);
+
+    if (FH.Version >= 3)
+      Writer.write(R.PId);
+    else
+      Writer.write(Padding4B);
+
     Writer.write(Padding4B);
     Writer.write(Padding4B);
   }
@@ -229,19 +240,29 @@ StackTrieNode *findOrCreateStackNode(
   return CurrentStack;
 }
 
-void writeTraceViewerRecord(raw_ostream &OS, int32_t FuncId, uint32_t TId,
-                            bool Symbolize,
+void writeTraceViewerRecord(uint16_t Version, raw_ostream &OS, int32_t FuncId,
+                            uint32_t TId, uint32_t PId, bool Symbolize,
                             const FuncIdConversionHelper &FuncIdHelper,
                             double EventTimestampUs,
                             const StackTrieNode &StackCursor,
                             StringRef FunctionPhenotype) {
   OS << "    ";
-  OS << llvm::formatv(
-      R"({ "name" : "{0}", "ph" : "{1}", "tid" : "{2}", "pid" : "1", )"
-      R"("ts" : "{3:f3}", "sf" : "{4}" })",
-      (Symbolize ? FuncIdHelper.SymbolOrNumber(FuncId)
-                 : llvm::to_string(FuncId)),
-      FunctionPhenotype, TId, EventTimestampUs, StackCursor.ExtraData.id);
+  if (Version >= 3) {
+    OS << llvm::formatv(
+        R"({ "name" : "{0}", "ph" : "{1}", "tid" : "{2}", "pid" : "{3}", )"
+        R"("ts" : "{4:f4}", "sf" : "{5}" })",
+        (Symbolize ? FuncIdHelper.SymbolOrNumber(FuncId)
+                   : llvm::to_string(FuncId)),
+        FunctionPhenotype, TId, PId, EventTimestampUs,
+        StackCursor.ExtraData.id);
+  } else {
+    OS << llvm::formatv(
+        R"({ "name" : "{0}", "ph" : "{1}", "tid" : "{2}", "pid" : "1", )"
+        R"("ts" : "{3:f3}", "sf" : "{4}" })",
+        (Symbolize ? FuncIdHelper.SymbolOrNumber(FuncId)
+                   : llvm::to_string(FuncId)),
+        FunctionPhenotype, TId, EventTimestampUs, StackCursor.ExtraData.id);
+  }
 }
 
 } // namespace
@@ -249,6 +270,7 @@ void writeTraceViewerRecord(raw_ostream &OS, int32_t FuncId, uint32_t TId,
 void TraceConverter::exportAsChromeTraceEventFormat(const Trace &Records,
                                                     raw_ostream &OS) {
   const auto &FH = Records.getFileHeader();
+  auto Version = FH.Version;
   auto CycleFreq = FH.CycleFrequency;
 
   unsigned id_counter = 0;
@@ -276,17 +298,21 @@ void TraceConverter::exportAsChromeTraceEventFormat(const Trace &Records,
     double EventTimestampUs = double(1000000) / CycleFreq * double(R.TSC);
     StackTrieNode *&StackCursor = StackCursorByThreadId[R.TId];
     switch (R.Type) {
+    case RecordTypes::CUSTOM_EVENT:
+    case RecordTypes::TYPED_EVENT:
+      // TODO: Support typed and custom event rendering on Chrome Trace Viewer.
+      break;
     case RecordTypes::ENTER:
     case RecordTypes::ENTER_ARG:
       StackCursor = findOrCreateStackNode(StackCursor, R.FuncId, R.TId,
                                           StackRootsByThreadId, StacksByStackId,
                                           &id_counter, NodeStore);
       // Each record is represented as a json dictionary with function name,
-      // type of B for begin or E for end, thread id, process id (faked),
+      // type of B for begin or E for end, thread id, process id,
       // timestamp in microseconds, and a stack frame id. The ids are logged
       // in an id dictionary after the events.
-      writeTraceViewerRecord(OS, R.FuncId, R.TId, Symbolize, FuncIdHelper,
-                             EventTimestampUs, *StackCursor, "B");
+      writeTraceViewerRecord(Version, OS, R.FuncId, R.TId, R.PId, Symbolize,
+                             FuncIdHelper, EventTimestampUs, *StackCursor, "B");
       break;
     case RecordTypes::EXIT:
     case RecordTypes::TAIL_EXIT:
@@ -297,9 +323,12 @@ void TraceConverter::exportAsChromeTraceEventFormat(const Trace &Records,
       // (And/Or in loop termination below)
       StackTrieNode *PreviousCursor = nullptr;
       do {
-        writeTraceViewerRecord(OS, StackCursor->FuncId, R.TId, Symbolize,
-                               FuncIdHelper, EventTimestampUs, *StackCursor,
-                               "E");
+        if (PreviousCursor != nullptr) {
+          OS << ",\n";
+        }
+        writeTraceViewerRecord(Version, OS, StackCursor->FuncId, R.TId, R.PId,
+                               Symbolize, FuncIdHelper, EventTimestampUs,
+                               *StackCursor, "E");
         PreviousCursor = StackCursor;
         StackCursor = StackCursor->Parent;
       } while (PreviousCursor->FuncId != R.FuncId && StackCursor != nullptr);
@@ -351,9 +380,7 @@ static CommandRegistration Unused(&Convert, []() -> Error {
   }
 
   const auto &FunctionAddresses = Map.getFunctionAddresses();
-  symbolize::LLVMSymbolizer::Options Opts(
-      symbolize::FunctionNameKind::LinkageName, true, true, false, "");
-  symbolize::LLVMSymbolizer Symbolizer(Opts);
+  symbolize::LLVMSymbolizer Symbolizer;
   llvm::xray::FuncIdConversionHelper FuncIdHelper(ConvertInstrMap, Symbolizer,
                                                   FunctionAddresses);
   llvm::xray::TraceConverter TC(FuncIdHelper, ConvertSymbolize);

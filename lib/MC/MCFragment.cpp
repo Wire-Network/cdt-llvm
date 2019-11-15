@@ -1,9 +1,8 @@
 //===- lib/MC/MCFragment.cpp - Assembler Fragment Implementation ----------===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 
@@ -237,8 +236,8 @@ MCFragment::~MCFragment() = default;
 
 MCFragment::MCFragment(FragmentType Kind, bool HasInstructions,
                        MCSection *Parent)
-    : Kind(Kind), HasInstructions(HasInstructions), Parent(Parent),
-      Atom(nullptr), Offset(~UINT64_C(0)) {
+    : Kind(Kind), HasInstructions(HasInstructions), LayoutOrder(0),
+      Parent(Parent), Atom(nullptr), Offset(~UINT64_C(0)) {
   if (Parent && !isDummy())
     Parent->getFragmentList().push_back(this);
 }
@@ -334,7 +333,7 @@ LLVM_DUMP_METHOD void MCFragment::dump() const {
 
   OS << "<MCFragment " << (const void *)this << " LayoutOrder:" << LayoutOrder
      << " Offset:" << Offset << " HasInstructions:" << hasInstructions();
-  if (const MCEncodedFragment *EF = cast<MCEncodedFragment>(this))
+  if (const MCEncodedFragment *EF = dyn_cast<MCEncodedFragment>(this))
     OS << " BundlePadding:" << static_cast<unsigned>(EF->getBundlePadding());
   OS << ">";
 

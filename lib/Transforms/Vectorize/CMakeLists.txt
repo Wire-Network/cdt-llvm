@@ -6,6 +6,9 @@ add_llvm_library(LLVMVectorize
   Vectorize.cpp
   VPlan.cpp
   VPlanHCFGBuilder.cpp
+  VPlanHCFGTransforms.cpp
+  VPlanPredicator.cpp
+  VPlanSLP.cpp
   VPlanVerifier.cpp
 
   ADDITIONAL_HEADER_DIRS

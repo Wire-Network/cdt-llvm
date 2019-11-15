@@ -1,9 +1,8 @@
 //===-- NVPTXISelDAGToDAG.h - A dag to dag inst selector for NVPTX --------===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
@@ -18,6 +17,7 @@
 #include "NVPTXISelLowering.h"
 #include "NVPTXRegisterInfo.h"
 #include "NVPTXTargetMachine.h"
+#include "MCTargetDesc/NVPTXBaseInfo.h"
 #include "llvm/CodeGen/SelectionDAGISel.h"
 #include "llvm/IR/Intrinsics.h"
 #include "llvm/Support/Compiler.h"
@@ -74,8 +74,6 @@ private:
   bool tryConstantFP16(SDNode *N);
   bool SelectSETP_F16X2(SDNode *N);
   bool tryEXTRACT_VECTOR_ELEMENT(SDNode *N);
-  bool tryWMMA_LDST(SDNode *N);
-  bool tryWMMA_MMA(SDNode *N);
 
   inline SDValue getI32Imm(unsigned Imm, const SDLoc &DL) {
     return CurDAG->getTargetConstant(Imm, DL, MVT::i32);
@@ -96,7 +94,6 @@ private:
                     SDValue &Offset);
   bool SelectADDRsi64(SDNode *OpNode, SDValue Addr, SDValue &Base,
                       SDValue &Offset);
-  bool SelectADDRvar(SDNode *OpNode, SDValue Addr, SDValue &Value);
 
   bool ChkMemSDNodeAddressSpace(SDNode *N, unsigned int spN) const;
 

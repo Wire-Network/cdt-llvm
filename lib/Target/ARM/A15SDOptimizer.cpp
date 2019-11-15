@@ -1,9 +1,8 @@
 //=== A15SDOptimizerPass.cpp - Optimize DPR and SPR register accesses on A15==//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
@@ -660,8 +659,9 @@ bool A15SDOptimizer::runOnMachineFunction(MachineFunction &Fn) {
   const ARMSubtarget &STI = Fn.getSubtarget<ARMSubtarget>();
   // Since the A15SDOptimizer pass can insert VDUP instructions, it can only be
   // enabled when NEON is available.
-  if (!(STI.isCortexA15() && STI.hasNEON()))
+  if (!(STI.useSplatVFPToNeon() && STI.hasNEON()))
     return false;
+
   TII = STI.getInstrInfo();
   TRI = STI.getRegisterInfo();
   MRI = &Fn.getRegInfo();

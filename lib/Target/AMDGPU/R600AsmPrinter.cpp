@@ -1,9 +1,8 @@
 //===-- R600AsmPrinter.cpp - R600 Assebly printer  ------------------------===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
@@ -51,7 +50,7 @@ void R600AsmPrinter::EmitProgramInfoR600(const MachineFunction &MF) {
 
   for (const MachineBasicBlock &MBB : MF) {
     for (const MachineInstr &MI : MBB) {
-      if (MI.getOpcode() == AMDGPU::KILLGT)
+      if (MI.getOpcode() == R600::KILLGT)
         killPixel = true;
       unsigned numOperands = MI.getNumOperands();
       for (unsigned op_idx = 0; op_idx < numOperands; op_idx++) {
@@ -69,7 +68,7 @@ void R600AsmPrinter::EmitProgramInfoR600(const MachineFunction &MF) {
   }
 
   unsigned RsrcReg;
-  if (STM.getGeneration() >= R600Subtarget::EVERGREEN) {
+  if (STM.getGeneration() >= AMDGPUSubtarget::EVERGREEN) {
     // Evergreen / Northern Islands
     switch (MF.getFunction().getCallingConv()) {
     default: LLVM_FALLTHROUGH;

@@ -52,17 +52,17 @@ ld1sb z27.d, p1/z, [x26, #8, MUL VL]
 // restricted predicate has range [0, 7].
 
 ld1sb z9.h, p8/z, [x25, #1, MUL VL]
-// CHECK: [[@LINE-1]]:{{[0-9]+}}: error: restricted predicate has range [0, 7].
+// CHECK: [[@LINE-1]]:{{[0-9]+}}: error: invalid restricted predicate register, expected p0..p7 (without element suffix)
 // CHECK-NEXT: ld1sb z9.h, p8/z, [x25, #1, MUL VL]
 // CHECK-NOT: [[@LINE-1]]:{{[0-9]+}}:
 
 ld1sb z12.s, p8/z, [x13, #1, MUL VL]
-// CHECK: [[@LINE-1]]:{{[0-9]+}}: error: restricted predicate has range [0, 7].
+// CHECK: [[@LINE-1]]:{{[0-9]+}}: error: invalid restricted predicate register, expected p0..p7 (without element suffix)
 // CHECK-NEXT: ld1sb z12.s, p8/z, [x13, #1, MUL VL]
 // CHECK-NOT: [[@LINE-1]]:{{[0-9]+}}:
 
 ld1sb z4.d, p8/z, [x11, #1, MUL VL]
-// CHECK: [[@LINE-1]]:{{[0-9]+}}: error: restricted predicate has range [0, 7].
+// CHECK: [[@LINE-1]]:{{[0-9]+}}: error: invalid restricted predicate register, expected p0..p7 (without element suffix)
 // CHECK-NEXT: ld1sb z4.d, p8/z, [x11, #1, MUL VL]
 // CHECK-NOT: [[@LINE-1]]:{{[0-9]+}}:
 
@@ -174,4 +174,20 @@ ld1sb z0.d, p0/z, [z0.d, #-1]
 ld1sb z0.d, p0/z, [z0.d, #32]
 // CHECK: [[@LINE-1]]:{{[0-9]+}}: error: immediate must be an integer in range [0, 31].
 // CHECK-NEXT: ld1sb z0.d, p0/z, [z0.d, #32]
+// CHECK-NOT: [[@LINE-1]]:{{[0-9]+}}:
+
+
+// --------------------------------------------------------------------------//
+// Negative tests for instructions that are incompatible with movprfx
+
+movprfx z0.d, p0/z, z7.d
+ld1sb   { z0.d }, p0/z, [z0.d]
+// CHECK: [[@LINE-1]]:{{[0-9]+}}: error: instruction is unpredictable when following a movprfx, suggest replacing movprfx with mov
+// CHECK-NEXT: ld1sb   { z0.d }, p0/z, [z0.d]
+// CHECK-NOT: [[@LINE-1]]:{{[0-9]+}}:
+
+movprfx z0, z7
+ld1sb   { z0.d }, p0/z, [z0.d]
+// CHECK: [[@LINE-1]]:{{[0-9]+}}: error: instruction is unpredictable when following a movprfx, suggest replacing movprfx with mov
+// CHECK-NEXT: ld1sb   { z0.d }, p0/z, [z0.d]
 // CHECK-NOT: [[@LINE-1]]:{{[0-9]+}}:

@@ -1,9 +1,8 @@
 //===-- llvm-mc.cpp - Machine Code Hacking Driver ---------------*- C++ -*-===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
@@ -152,12 +151,21 @@ static cl::opt<std::string>
 DebugCompilationDir("fdebug-compilation-dir",
                     cl::desc("Specifies the debug info's compilation dir"));
 
+static cl::list<std::string>
+DebugPrefixMap("fdebug-prefix-map",
+               cl::desc("Map file source paths in debug info"),
+               cl::value_desc("= separated key-value pairs"));
+
 static cl::opt<std::string>
 MainFileName("main-file-name",
              cl::desc("Specifies the name we should consider the input file"));
 
 static cl::opt<bool> SaveTempLabels("save-temp-labels",
                                     cl::desc("Don't discard temporary labels"));
+
+static cl::opt<bool> LexMasmIntegers(
+    "masm-integers",
+    cl::desc("Enable binary and hex masm integers (0b110 and 0ABCh)"));
 
 static cl::opt<bool> NoExecStack("no-exec-stack",
                                  cl::desc("File doesn't need an exec stack"));
@@ -288,6 +296,7 @@ static int AssembleInput(const char *ProgName, const Target *TheTarget,
     return SymbolResult;
   Parser->setShowParsedOperands(ShowInstOperands);
   Parser->setTargetParser(*TAP);
+  Parser->getLexer().setLexMasmIntegers(LexMasmIntegers);
 
   int Res = Parser->Run(NoInitialTextSection);
 
@@ -308,7 +317,6 @@ int main(int argc, char **argv) {
 
   cl::ParseCommandLineOptions(argc, argv, "llvm machine code playground\n");
   MCTargetOptions MCOptions = InitMCTargetOptionsFromFlags();
-  TripleName = Triple::normalize(TripleName);
   setDwarfDebugFlags(argc, argv);
 
   setDwarfDebugProducer();
@@ -387,20 +395,14 @@ int main(int argc, char **argv) {
     if (!sys::fs::current_path(CWD))
       Ctx.setCompilationDir(CWD);
   }
+  for (const auto &Arg : DebugPrefixMap) {
+    const auto &KV = StringRef(Arg).split('=');
+    Ctx.addDebugPrefixMapEntry(KV.first, KV.second);
+  }
   if (!MainFileName.empty())
     Ctx.setMainFileName(MainFileName);
-  if (GenDwarfForAssembly && DwarfVersion >= 5) {
-    // DWARF v5 needs the root file as well as the compilation directory.
-    // If we find a '.file 0' directive that will supersede these values.
-    MD5 Hash;
-    MD5::MD5Result *Cksum =
-        (MD5::MD5Result *)Ctx.allocate(sizeof(MD5::MD5Result), 1);
-    Hash.update(Buffer->getBuffer());
-    Hash.final(*Cksum);
-    Ctx.setMCLineTableRootFile(
-        /*CUID=*/0, Ctx.getCompilationDir(),
-        !MainFileName.empty() ? MainFileName : InputFilename, Cksum, None);
-  }
+  if (GenDwarfForAssembly)
+    Ctx.setGenDwarfRootFile(InputFilename, Buffer->getBuffer());
 
   // Package up features to be passed to target/subtarget
   std::string FeaturesStr;

@@ -31,25 +31,25 @@ add z29.d, p7, z29.d, z8.d
 // CHECK-NOT: [[@LINE-1]]:{{[0-9]+}}:
 
 // --------------------------------------------------------------------------//
-// error: restricted predicate has range [0, 7].
+// error: invalid restricted predicate register, expected p0..p7 (without element suffix)
 
 add z22.b, p8/m, z22.b, z11.b
-// CHECK: [[@LINE-1]]:{{[0-9]+}}: error: restricted predicate has range [0, 7].
+// CHECK: [[@LINE-1]]:{{[0-9]+}}: error: invalid restricted predicate register, expected p0..p7 (without element suffix)
 // CHECK-NEXT: add z22.b, p8/m, z22.b, z11.b
 // CHECK-NOT: [[@LINE-1]]:{{[0-9]+}}:
 
 add z22.h, p8/m, z22.h, z6.h
-// CHECK: [[@LINE-1]]:{{[0-9]+}}: error: restricted predicate has range [0, 7].
+// CHECK: [[@LINE-1]]:{{[0-9]+}}: error: invalid restricted predicate register, expected p0..p7 (without element suffix)
 // CHECK-NEXT: add z22.h, p8/m, z22.h, z6.h
 // CHECK-NOT: [[@LINE-1]]:{{[0-9]+}}:
 
 add z30.s, p8/m, z30.s, z13.s
-// CHECK: [[@LINE-1]]:{{[0-9]+}}: error: restricted predicate has range [0, 7].
+// CHECK: [[@LINE-1]]:{{[0-9]+}}: error: invalid restricted predicate register, expected p0..p7 (without element suffix)
 // CHECK-NEXT: add z30.s, p8/m, z30.s, z13.s
 // CHECK-NOT: [[@LINE-1]]:{{[0-9]+}}:
 
 add z29.d, p8/m, z29.d, z8.d
-// CHECK: [[@LINE-1]]:{{[0-9]+}}: error: restricted predicate has range [0, 7].
+// CHECK: [[@LINE-1]]:{{[0-9]+}}: error: invalid restricted predicate register, expected p0..p7 (without element suffix)
 // CHECK-NEXT: add z29.d, p8/m, z29.d, z8.d
 // CHECK-NOT: [[@LINE-1]]:{{[0-9]+}}:
 
@@ -143,4 +143,26 @@ add     z0.d, z0.d, #256, lsl #8
 add     z0.d, z0.d, #65536
 // CHECK: [[@LINE-1]]:{{[0-9]+}}: error: immediate must be an integer in range [0, 255] or a multiple of 256 in range [256, 65280]
 // CHECK-NEXT: add     z0.d, z0.d, #65536
+// CHECK-NOT: [[@LINE-1]]:{{[0-9]+}}:
+
+
+// --------------------------------------------------------------------------//
+// Negative tests for instructions that are incompatible with movprfx
+
+movprfx z31.d, p0/z, z6.d
+add     z31.d, z31.d, #65280
+// CHECK: [[@LINE-1]]:{{[0-9]+}}: error: instruction is unpredictable when following a predicated movprfx, suggest using unpredicated movprfx
+// CHECK-NEXT: add     z31.d, z31.d, #65280
+// CHECK-NOT: [[@LINE-1]]:{{[0-9]+}}:
+
+movprfx z23.s, p0/z, z30.s
+add     z23.s, z13.s, z8.s
+// CHECK: [[@LINE-1]]:{{[0-9]+}}: error: instruction is unpredictable when following a movprfx, suggest replacing movprfx with mov
+// CHECK-NEXT: add     z23.s, z13.s, z8.s
+// CHECK-NOT: [[@LINE-1]]:{{[0-9]+}}:
+
+movprfx z23, z30
+add     z23.s, z13.s, z8.s
+// CHECK: [[@LINE-1]]:{{[0-9]+}}: error: instruction is unpredictable when following a movprfx, suggest replacing movprfx with mov
+// CHECK-NEXT: add     z23.s, z13.s, z8.s
 // CHECK-NOT: [[@LINE-1]]:{{[0-9]+}}:

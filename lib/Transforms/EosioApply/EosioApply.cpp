@@ -35,20 +35,20 @@ static cl::opt<std::string> entry_opt (
 );
 
 namespace {
-  // EosioApply - Mutate the apply function as needed 
+  // EosioApply - Mutate the apply function as needed
   struct EosioApplyPass : public FunctionPass {
-    static char ID; 
+    static char ID;
     EosioApplyPass() : FunctionPass(ID) {}
     bool runOnFunction(Function &F) override {
        if (F.hasFnAttribute("eosio_wasm_entry") || F.getName().equals("apply")) {
-         Function* wasm_ctors = (Function*)F.getParent()->getOrInsertFunction("__wasm_call_ctors", AttributeList{}, Type::getVoidTy(F.getContext()));
-         Function* wasm_dtors = (Function*)F.getParent()->getOrInsertFunction("__cxa_finalize", AttributeList{}, Type::getVoidTy(F.getContext()), Type::getInt32Ty(F.getContext()));
+         auto wasm_ctors = F.getParent()->getOrInsertFunction("__wasm_call_ctors", AttributeList{}, Type::getVoidTy(F.getContext()));
+         auto wasm_dtors = F.getParent()->getOrInsertFunction("__cxa_finalize", AttributeList{}, Type::getVoidTy(F.getContext()), Type::getInt32Ty(F.getContext()));
 
          IRBuilder<> builder(&F.getEntryBlock());
          builder.SetInsertPoint(&(F.getEntryBlock().front()));
 
          CallInst* wasm_ctor_call = builder.CreateCall(wasm_ctors, {}, "");
-         if (const Function* F_ = dyn_cast<Function>(wasm_ctors->stripPointerCasts()))
+         if (const Function* F_ = dyn_cast<const Function>(wasm_ctors.getCallee()->stripPointerCasts()))
             wasm_ctor_call->setCallingConv(F_->getCallingConv());
 
          for ( Function::iterator bb = F.begin(); bb != F.end(); bb++ ) {
@@ -56,7 +56,7 @@ namespace {
                builder.SetInsertPoint((*bb).getTerminator());
                // for now just call with null
                CallInst* wasm_dtor_call = builder.CreateCall(wasm_dtors, {Constant::getNullValue(Type::getInt32Ty(F.getContext()))}, "");
-               if (const Function* F_ = dyn_cast<Function>(wasm_dtors->stripPointerCasts()))
+               if (const Function* F_ = dyn_cast<Function>(wasm_dtors.getCallee()->stripPointerCasts()))
                   wasm_dtor_call->setCallingConv(F_->getCallingConv());
             }
          }

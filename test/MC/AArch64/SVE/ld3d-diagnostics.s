@@ -59,10 +59,10 @@ ld3d { z0.d, z1.d, z2.d }, p0/z, [x0, w0, uxtw]
 
 
 // --------------------------------------------------------------------------//
-// error: restricted predicate has range [0, 7].
+// error: invalid restricted predicate register, expected p0..p7 (without element suffix)
 
 ld3d {z2.d, z3.d, z4.d}, p8/z, [x15, #10, MUL VL]
-// CHECK: [[@LINE-1]]:{{[0-9]+}}: error: restricted predicate has range [0, 7].
+// CHECK: [[@LINE-1]]:{{[0-9]+}}: error: invalid restricted predicate register, expected p0..p7 (without element suffix)
 // CHECK-NEXT: ld3d {z2.d, z3.d, z4.d}, p8/z, [x15, #10, MUL VL]
 // CHECK-NOT: [[@LINE-1]]:{{[0-9]+}}:
 
@@ -93,4 +93,20 @@ ld3d { z0.d, z1.d, z3.d }, p0/z, [x0]
 ld3d { v0.2d, v1.2d, v2.2d }, p0/z, [x0]
 // CHECK: [[@LINE-1]]:{{[0-9]+}}: error: invalid operand
 // CHECK-NEXT: ld3d { v0.2d, v1.2d, v2.2d }, p0/z, [x0]
+// CHECK-NOT: [[@LINE-1]]:{{[0-9]+}}:
+
+
+// --------------------------------------------------------------------------//
+// Negative tests for instructions that are incompatible with movprfx
+
+movprfx z21.d, p5/z, z28.d
+ld3d    { z21.d, z22.d, z23.d }, p5/z, [x10, #15, mul vl]
+// CHECK: [[@LINE-1]]:{{[0-9]+}}: error: instruction is unpredictable when following a movprfx, suggest replacing movprfx with mov
+// CHECK-NEXT: ld3d    { z21.d, z22.d, z23.d }, p5/z, [x10, #15, mul vl]
+// CHECK-NOT: [[@LINE-1]]:{{[0-9]+}}:
+
+movprfx z21, z28
+ld3d    { z21.d, z22.d, z23.d }, p5/z, [x10, #15, mul vl]
+// CHECK: [[@LINE-1]]:{{[0-9]+}}: error: instruction is unpredictable when following a movprfx, suggest replacing movprfx with mov
+// CHECK-NEXT: ld3d    { z21.d, z22.d, z23.d }, p5/z, [x10, #15, mul vl]
 // CHECK-NOT: [[@LINE-1]]:{{[0-9]+}}:

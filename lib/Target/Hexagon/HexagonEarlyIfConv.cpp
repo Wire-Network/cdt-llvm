@@ -1,9 +1,8 @@
 //===- HexagonEarlyIfConv.cpp ---------------------------------------------===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
@@ -731,9 +730,7 @@ void HexagonEarlyIfConversion::predicateInstr(MachineBasicBlock *ToB,
       MIB.add(MO);
 
     // Set memory references.
-    MachineInstr::mmo_iterator MMOBegin = MI->memoperands_begin();
-    MachineInstr::mmo_iterator MMOEnd = MI->memoperands_end();
-    MIB.setMemRefs(MMOBegin, MMOEnd);
+    MIB.cloneMemRefs(*MI);
 
     MI->eraseFromParent();
     return;

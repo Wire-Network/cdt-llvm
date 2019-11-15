@@ -1,9 +1,8 @@
 //===-- SystemZOperands.td - SystemZ instruction operands ----*- tblgen-*--===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 
@@ -189,6 +188,17 @@ def HF32 : SDNodeXForm<imm, [{
   return CurDAG->getTargetConstant(Value, SDLoc(N), MVT::i64);
 }]>;
 
+// Negated variants.
+def NEGLH16 : SDNodeXForm<imm, [{
+  uint64_t Value = (-N->getZExtValue() & 0x00000000FFFF0000ULL) >> 16;
+  return CurDAG->getTargetConstant(Value, SDLoc(N), MVT::i64);
+}]>;
+
+def NEGLF32 : SDNodeXForm<imm, [{
+  uint64_t Value = -N->getZExtValue() & 0x00000000FFFFFFFFULL;
+  return CurDAG->getTargetConstant(Value, SDLoc(N), MVT::i64);
+}]>;
+
 // Truncate an immediate to a 8-bit signed quantity.
 def SIMM8 : SDNodeXForm<imm, [{
   return CurDAG->getTargetConstant(int8_t(N->getZExtValue()), SDLoc(N),
@@ -357,6 +367,7 @@ def imm32zx16 : Immediate<i32, [{
 }], UIMM16, "U16Imm">;
 
 def imm32sx16trunc : Immediate<i32, [{}], SIMM16, "S16Imm">;
+def imm32zx16trunc : Immediate<i32, [{}], UIMM16, "U16Imm">;
 
 // Full 32-bit immediates.  we need both signed and unsigned versions
 // because the assembler is picky.  E.g. AFI requires signed operands
@@ -429,6 +440,15 @@ def imm64lf32c : Immediate<i64, [{
 def imm64hf32c : Immediate<i64, [{
   return SystemZ::isImmHF(uint64_t(~N->getZExtValue()));
 }], HF32, "U32Imm">;
+
+// Negated immediates that fit LF32 or LH16.
+def imm64lh16n : Immediate<i64, [{
+  return SystemZ::isImmLH(uint64_t(-N->getZExtValue()));
+}], NEGLH16, "U16Imm">;
+
+def imm64lf32n : Immediate<i64, [{
+  return SystemZ::isImmLF(uint64_t(-N->getZExtValue()));
+}], NEGLF32, "U32Imm">;
 
 // Short immediates.
 def imm64sx8 : Immediate<i64, [{

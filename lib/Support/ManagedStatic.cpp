@@ -1,9 +1,8 @@
 //===-- ManagedStatic.cpp - Static Global wrapper -------------------------===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
@@ -43,7 +42,7 @@ void ManagedStaticBase::RegisterManagedStatic(void *(*Creator)(),
 
       Ptr.store(Tmp, std::memory_order_release);
       DeleterFn = Deleter;
-      
+
       // Add to list of managed statics.
       Next = StaticList;
       StaticList = this;
@@ -53,7 +52,7 @@ void ManagedStaticBase::RegisterManagedStatic(void *(*Creator)(),
            "Partially initialized ManagedStatic!?");
     Ptr = Creator();
     DeleterFn = Deleter;
-  
+
     // Add to list of managed statics.
     Next = StaticList;
     StaticList = this;
@@ -70,7 +69,7 @@ void ManagedStaticBase::destroy() const {
 
   // Destroy memory.
   DeleterFn(Ptr);
-  
+
   // Cleanup.
   Ptr = nullptr;
   DeleterFn = nullptr;

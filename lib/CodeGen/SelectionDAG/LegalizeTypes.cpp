@@ -1,9 +1,8 @@
 //===-- LegalizeTypes.cpp - Common code for DAG type legalizer ------------===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
@@ -84,10 +83,11 @@ void DAGTypeLegalizer::PerformExpensiveChecks() {
       SDValue Res(&Node, i);
       EVT VT = Res.getValueType();
       bool Failed = false;
-      auto ResId = getTableId(Res);
+      // Don't create a value in map.
+      auto ResId = (ValueToIdMap.count(Res)) ? ValueToIdMap[Res] : 0;
 
       unsigned Mapped = 0;
-      if (ReplacedValues.find(ResId) != ReplacedValues.end()) {
+      if (ResId && (ReplacedValues.find(ResId) != ReplacedValues.end())) {
         Mapped |= 1;
         // Check that remapped values are only used by nodes marked NewNode.
         for (SDNode::use_iterator UI = Node.use_begin(), UE = Node.use_end();
@@ -109,21 +109,21 @@ void DAGTypeLegalizer::PerformExpensiveChecks() {
         assert(NewVal.getNode()->getNodeId() != NewNode &&
                "ReplacedValues maps to a new node!");
       }
-      if (PromotedIntegers.find(ResId) != PromotedIntegers.end())
+      if (ResId && PromotedIntegers.find(ResId) != PromotedIntegers.end())
         Mapped |= 2;
-      if (SoftenedFloats.find(ResId) != SoftenedFloats.end())
+      if (ResId && SoftenedFloats.find(ResId) != SoftenedFloats.end())
         Mapped |= 4;
-      if (ScalarizedVectors.find(ResId) != ScalarizedVectors.end())
+      if (ResId && ScalarizedVectors.find(ResId) != ScalarizedVectors.end())
         Mapped |= 8;
-      if (ExpandedIntegers.find(ResId) != ExpandedIntegers.end())
+      if (ResId && ExpandedIntegers.find(ResId) != ExpandedIntegers.end())
         Mapped |= 16;
-      if (ExpandedFloats.find(ResId) != ExpandedFloats.end())
+      if (ResId && ExpandedFloats.find(ResId) != ExpandedFloats.end())
         Mapped |= 32;
-      if (SplitVectors.find(ResId) != SplitVectors.end())
+      if (ResId && SplitVectors.find(ResId) != SplitVectors.end())
         Mapped |= 64;
-      if (WidenedVectors.find(ResId) != WidenedVectors.end())
+      if (ResId && WidenedVectors.find(ResId) != WidenedVectors.end())
         Mapped |= 128;
-      if (PromotedFloats.find(ResId) != PromotedFloats.end())
+      if (ResId && PromotedFloats.find(ResId) != PromotedFloats.end())
         Mapped |= 256;
 
       if (Node.getNodeId() != Processed) {
@@ -574,6 +574,7 @@ void DAGTypeLegalizer::RemapValue(SDValue &V) {
 void DAGTypeLegalizer::RemapId(TableId &Id) {
   auto I = ReplacedValues.find(Id);
   if (I != ReplacedValues.end()) {
+    assert(Id != I->second && "Id is mapped to itself.");
     // Use path compression to speed up future lookups if values get multiply
     // replaced with other values.
     RemapId(I->second);
@@ -651,7 +652,8 @@ void DAGTypeLegalizer::ReplaceValueWith(SDValue From, SDValue To) {
     auto FromId = getTableId(From);
     auto ToId = getTableId(To);
 
-    ReplacedValues[FromId] = ToId;
+    if (FromId != ToId)
+      ReplacedValues[FromId] = ToId;
     DAG.ReplaceAllUsesOfValueWith(From, To);
 
     // Process the list of nodes that need to be reanalyzed.
@@ -684,7 +686,8 @@ void DAGTypeLegalizer::ReplaceValueWith(SDValue From, SDValue To) {
           auto OldValId = getTableId(OldVal);
           auto NewValId = getTableId(NewVal);
           DAG.ReplaceAllUsesOfValueWith(OldVal, NewVal);
-          ReplacedValues[OldValId] = NewValId;
+          if (OldValId != NewValId)
+            ReplacedValues[OldValId] = NewValId;
         }
         // The original node continues to exist in the DAG, marked NewNode.
       }
@@ -704,6 +707,7 @@ void DAGTypeLegalizer::SetPromotedInteger(SDValue Op, SDValue Result) {
   auto &OpIdEntry = PromotedIntegers[getTableId(Op)];
   assert((OpIdEntry == 0) && "Node is already promoted!");
   OpIdEntry = getTableId(Result);
+  Result->setFlags(Op->getFlags());
 
   DAG.transferDbgValues(Op, Result);
 }

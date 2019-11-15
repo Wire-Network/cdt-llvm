@@ -1,9 +1,8 @@
 //===- lib/MC/MCELFStreamer.cpp - ELF Object Output -----------------------===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
@@ -202,6 +201,7 @@ bool MCELFStreamer::EmitSymbolAttribute(MCSymbol *S, MCSymbolAttr Attribute) {
   // In the future it might be worth trying to make these operations more well
   // defined.
   switch (Attribute) {
+  case MCSA_Cold:
   case MCSA_LazyReference:
   case MCSA_Reference:
   case MCSA_SymbolResolver:
@@ -400,6 +400,8 @@ void MCELFStreamer::fixSymbolsInTLSFixups(const MCExpr *expr) {
     case MCSymbolRefExpr::VK_INDNTPOFF:
     case MCSymbolRefExpr::VK_NTPOFF:
     case MCSymbolRefExpr::VK_GOTNTPOFF:
+    case MCSymbolRefExpr::VK_TLSCALL:
+    case MCSymbolRefExpr::VK_TLSDESC:
     case MCSymbolRefExpr::VK_TLSGD:
     case MCSymbolRefExpr::VK_TLSLD:
     case MCSymbolRefExpr::VK_TLSLDM:
@@ -411,6 +413,8 @@ void MCELFStreamer::fixSymbolsInTLSFixups(const MCExpr *expr) {
     case MCSymbolRefExpr::VK_PPC_TPREL_LO:
     case MCSymbolRefExpr::VK_PPC_TPREL_HI:
     case MCSymbolRefExpr::VK_PPC_TPREL_HA:
+    case MCSymbolRefExpr::VK_PPC_TPREL_HIGH:
+    case MCSymbolRefExpr::VK_PPC_TPREL_HIGHA:
     case MCSymbolRefExpr::VK_PPC_TPREL_HIGHER:
     case MCSymbolRefExpr::VK_PPC_TPREL_HIGHERA:
     case MCSymbolRefExpr::VK_PPC_TPREL_HIGHEST:
@@ -418,6 +422,8 @@ void MCELFStreamer::fixSymbolsInTLSFixups(const MCExpr *expr) {
     case MCSymbolRefExpr::VK_PPC_DTPREL_LO:
     case MCSymbolRefExpr::VK_PPC_DTPREL_HI:
     case MCSymbolRefExpr::VK_PPC_DTPREL_HA:
+    case MCSymbolRefExpr::VK_PPC_DTPREL_HIGH:
+    case MCSymbolRefExpr::VK_PPC_DTPREL_HIGHA:
     case MCSymbolRefExpr::VK_PPC_DTPREL_HIGHER:
     case MCSymbolRefExpr::VK_PPC_DTPREL_HIGHERA:
     case MCSymbolRefExpr::VK_PPC_DTPREL_HIGHEST:
@@ -679,7 +685,8 @@ void MCELFStreamer::EmitSymbolDesc(MCSymbol *Symbol, unsigned DescValue) {
 }
 
 void MCELFStreamer::EmitZerofill(MCSection *Section, MCSymbol *Symbol,
-                                 uint64_t Size, unsigned ByteAlignment) {
+                                 uint64_t Size, unsigned ByteAlignment,
+                                 SMLoc Loc) {
   llvm_unreachable("ELF doesn't support this directive");
 }
 

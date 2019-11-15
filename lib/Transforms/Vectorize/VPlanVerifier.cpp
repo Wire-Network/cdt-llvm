@@ -1,9 +1,8 @@
 //===-- VPlanVerifier.cpp -------------------------------------------------===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 ///
@@ -47,6 +46,12 @@ static void verifyBlocksInRegion(const VPRegionBlock *Region) {
                   df_iterator<const VPBlockBase *>::end(Region->getExit()))) {
     // Check block's parent.
     assert(VPB->getParent() == Region && "VPBlockBase has wrong parent");
+
+    // Check block's condition bit.
+    if (VPB->getNumSuccessors() > 1)
+      assert(VPB->getCondBit() && "Missing condition bit!");
+    else
+      assert(!VPB->getCondBit() && "Unexpected condition bit!");
 
     // Check block's successors.
     const auto &Successors = VPB->getSuccessors();

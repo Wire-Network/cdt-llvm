@@ -1,9 +1,8 @@
 //===-- llvm/Target/TargetLoweringObjectFile.cpp - Object File Info -------===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
@@ -45,6 +44,10 @@ void TargetLoweringObjectFile::Initialize(MCContext &ctx,
   Mang = new Mangler();
   InitMCObjectFileInfo(TM.getTargetTriple(), TM.isPositionIndependent(), *Ctx,
                        TM.getCodeModel() == CodeModel::Large);
+
+  // Reset various EH DWARF encodings.
+  PersonalityEncoding = LSDAEncoding = TTypeEncoding = dwarf::DW_EH_PE_absptr;
+  CallSiteEncoding = dwarf::DW_EH_PE_uleb128;
 }
 
 TargetLoweringObjectFile::~TargetLoweringObjectFile() {
@@ -92,10 +95,10 @@ static bool IsNullTerminatedString(const Constant *C) {
   if (const ConstantDataSequential *CDS = dyn_cast<ConstantDataSequential>(C)) {
     unsigned NumElts = CDS->getNumElements();
     assert(NumElts != 0 && "Can't have an empty CDS");
-    
+
     if (CDS->getElementAsInteger(NumElts-1) != 0)
       return false; // Not null terminated.
-    
+
     // Verify that the null doesn't occur anywhere else in the string.
     for (unsigned i = 0; i != NumElts-1; ++i)
       if (CDS->getElementAsInteger(i) == 0)

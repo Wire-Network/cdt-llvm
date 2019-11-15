@@ -486,23 +486,23 @@ define void @extract_f64_1(double* nocapture %dst, <2 x double> %foo) nounwind {
 ; SSE-X32-LABEL: extract_f64_1:
 ; SSE-X32:       # %bb.0:
 ; SSE-X32-NEXT:    movl {{[0-9]+}}(%esp), %eax
-; SSE-X32-NEXT:    movhpd %xmm0, (%eax)
+; SSE-X32-NEXT:    movhps %xmm0, (%eax)
 ; SSE-X32-NEXT:    retl
 ;
 ; SSE-X64-LABEL: extract_f64_1:
 ; SSE-X64:       # %bb.0:
-; SSE-X64-NEXT:    movhpd %xmm0, (%rdi)
+; SSE-X64-NEXT:    movhps %xmm0, (%rdi)
 ; SSE-X64-NEXT:    retq
 ;
 ; AVX-X32-LABEL: extract_f64_1:
 ; AVX-X32:       # %bb.0:
 ; AVX-X32-NEXT:    movl {{[0-9]+}}(%esp), %eax
-; AVX-X32-NEXT:    vmovhpd %xmm0, (%eax)
+; AVX-X32-NEXT:    vmovhps %xmm0, (%eax)
 ; AVX-X32-NEXT:    retl
 ;
 ; AVX-X64-LABEL: extract_f64_1:
 ; AVX-X64:       # %bb.0:
-; AVX-X64-NEXT:    vmovhpd %xmm0, (%rdi)
+; AVX-X64-NEXT:    vmovhps %xmm0, (%rdi)
 ; AVX-X64-NEXT:    retq
   %vecext = extractelement <2 x double> %foo, i32 1
   store double %vecext, double* %dst, align 1
@@ -554,7 +554,7 @@ define void @extract_f128_0(fp128* nocapture %dst, <2 x fp128> %foo) nounwind {
 ;
 ; SSE-F128-LABEL: extract_f128_0:
 ; SSE-F128:       # %bb.0:
-; SSE-F128-NEXT:    movaps %xmm0, (%rdi)
+; SSE-F128-NEXT:    movups %xmm0, (%rdi)
 ; SSE-F128-NEXT:    retq
   %vecext = extractelement <2 x fp128> %foo, i32 0
   store fp128 %vecext, fp128* %dst, align 1
@@ -606,7 +606,7 @@ define void @extract_f128_1(fp128* nocapture %dst, <2 x fp128> %foo) nounwind {
 ;
 ; SSE-F128-LABEL: extract_f128_1:
 ; SSE-F128:       # %bb.0:
-; SSE-F128-NEXT:    movaps %xmm1, (%rdi)
+; SSE-F128-NEXT:    movups %xmm1, (%rdi)
 ; SSE-F128-NEXT:    retq
   %vecext = extractelement <2 x fp128> %foo, i32 1
   store fp128 %vecext, fp128* %dst, align 1

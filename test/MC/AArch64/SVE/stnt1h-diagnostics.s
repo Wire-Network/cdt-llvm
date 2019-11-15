@@ -34,16 +34,31 @@ stnt1h z0.d, p0, [x0]
 
 
 // --------------------------------------------------------------------------//
-// invalid predicate
+// Invalid predicate
 
 stnt1h z27.h, p8, [x0]
-// CHECK: [[@LINE-1]]:{{[0-9]+}}: error: restricted predicate has range [0, 7].
+// CHECK: [[@LINE-1]]:{{[0-9]+}}: error: invalid restricted predicate register, expected p0..p7 (without element suffix)
 // CHECK-NEXT: stnt1h z27.h, p8, [x0]
 // CHECK-NOT: [[@LINE-1]]:{{[0-9]+}}:
 
 stnt1h z0.h, p0/z, [x0]
 // CHECK: [[@LINE-1]]:{{[0-9]+}}: error: invalid operand for instruction
 // CHECK-NEXT: stnt1h z0.h, p0/z, [x0]
+// CHECK-NOT: [[@LINE-1]]:{{[0-9]+}}:
+
+stnt1h z0.h, p0/m, [x0]
+// CHECK: [[@LINE-1]]:{{[0-9]+}}: error: invalid operand for instruction
+// CHECK-NEXT: stnt1h z0.h, p0/m, [x0]
+// CHECK-NOT: [[@LINE-1]]:{{[0-9]+}}:
+
+stnt1h z0.h, p7.b, [x0]
+// CHECK: [[@LINE-1]]:{{[0-9]+}}: error: invalid restricted predicate register, expected p0..p7 (without element suffix)
+// CHECK-NEXT: stnt1h z0.h, p7.b, [x0]
+// CHECK-NOT: [[@LINE-1]]:{{[0-9]+}}:
+
+stnt1h z0.h, p7.q, [x0]
+// CHECK: [[@LINE-1]]:{{[0-9]+}}: error: invalid restricted predicate register, expected p0..p7 (without element suffix)
+// CHECK-NEXT: stnt1h z0.h, p7.q, [x0]
 // CHECK-NOT: [[@LINE-1]]:{{[0-9]+}}:
 
 
@@ -63,4 +78,20 @@ stnt1h { z1.h, z2.h }, p0, [x1, #1, MUL VL]
 stnt1h { v0.2d }, p0, [x1, #1, MUL VL]
 // CHECK: [[@LINE-1]]:{{[0-9]+}}: error: invalid operand
 // CHECK-NEXT: stnt1h { v0.2d }, p0, [x1, #1, MUL VL]
+// CHECK-NOT: [[@LINE-1]]:{{[0-9]+}}:
+
+
+// --------------------------------------------------------------------------//
+// Negative tests for instructions that are incompatible with movprfx
+
+movprfx z0.h, p0/z, z7.h
+stnt1h  { z0.h }, p0, [x0, x0, lsl #1]
+// CHECK: [[@LINE-1]]:{{[0-9]+}}: error: instruction is unpredictable when following a movprfx, suggest replacing movprfx with mov
+// CHECK-NEXT: stnt1h  { z0.h }, p0, [x0, x0, lsl #1]
+// CHECK-NOT: [[@LINE-1]]:{{[0-9]+}}:
+
+movprfx z0, z7
+stnt1h  { z0.h }, p0, [x0, x0, lsl #1]
+// CHECK: [[@LINE-1]]:{{[0-9]+}}: error: instruction is unpredictable when following a movprfx, suggest replacing movprfx with mov
+// CHECK-NEXT: stnt1h  { z0.h }, p0, [x0, x0, lsl #1]
 // CHECK-NOT: [[@LINE-1]]:{{[0-9]+}}:

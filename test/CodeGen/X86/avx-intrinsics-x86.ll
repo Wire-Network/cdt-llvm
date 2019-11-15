@@ -622,39 +622,6 @@ define <8 x float> @test_x86_avx_rsqrt_ps_256(<8 x float> %a0) {
 }
 declare <8 x float> @llvm.x86.avx.rsqrt.ps.256(<8 x float>) nounwind readnone
 
-
-define <4 x double> @test_x86_avx_sqrt_pd_256(<4 x double> %a0) {
-; AVX-LABEL: test_x86_avx_sqrt_pd_256:
-; AVX:       # %bb.0:
-; AVX-NEXT:    vsqrtpd %ymm0, %ymm0 # encoding: [0xc5,0xfd,0x51,0xc0]
-; AVX-NEXT:    ret{{[l|q]}} # encoding: [0xc3]
-;
-; AVX512VL-LABEL: test_x86_avx_sqrt_pd_256:
-; AVX512VL:       # %bb.0:
-; AVX512VL-NEXT:    vsqrtpd %ymm0, %ymm0 # EVEX TO VEX Compression encoding: [0xc5,0xfd,0x51,0xc0]
-; AVX512VL-NEXT:    ret{{[l|q]}} # encoding: [0xc3]
-  %res = call <4 x double> @llvm.x86.avx.sqrt.pd.256(<4 x double> %a0) ; <<4 x double>> [#uses=1]
-  ret <4 x double> %res
-}
-declare <4 x double> @llvm.x86.avx.sqrt.pd.256(<4 x double>) nounwind readnone
-
-
-define <8 x float> @test_x86_avx_sqrt_ps_256(<8 x float> %a0) {
-; AVX-LABEL: test_x86_avx_sqrt_ps_256:
-; AVX:       # %bb.0:
-; AVX-NEXT:    vsqrtps %ymm0, %ymm0 # encoding: [0xc5,0xfc,0x51,0xc0]
-; AVX-NEXT:    ret{{[l|q]}} # encoding: [0xc3]
-;
-; AVX512VL-LABEL: test_x86_avx_sqrt_ps_256:
-; AVX512VL:       # %bb.0:
-; AVX512VL-NEXT:    vsqrtps %ymm0, %ymm0 # EVEX TO VEX Compression encoding: [0xc5,0xfc,0x51,0xc0]
-; AVX512VL-NEXT:    ret{{[l|q]}} # encoding: [0xc3]
-  %res = call <8 x float> @llvm.x86.avx.sqrt.ps.256(<8 x float> %a0) ; <<8 x float>> [#uses=1]
-  ret <8 x float> %res
-}
-declare <8 x float> @llvm.x86.avx.sqrt.ps.256(<8 x float>) nounwind readnone
-
-
 define <2 x double> @test_x86_avx_vpermilvar_pd(<2 x double> %a0, <2 x i64> %a1) {
 ; AVX-LABEL: test_x86_avx_vpermilvar_pd:
 ; AVX:       # %bb.0:
@@ -949,8 +916,7 @@ define void @movnt_dq(i8* %p, <2 x i64> %a1) nounwind {
 ; X86-AVX-NEXT:    movl {{[0-9]+}}(%esp), %eax # encoding: [0x8b,0x44,0x24,0x04]
 ; X86-AVX-NEXT:    vpcmpeqd %xmm1, %xmm1, %xmm1 # encoding: [0xc5,0xf1,0x76,0xc9]
 ; X86-AVX-NEXT:    vpsubq %xmm1, %xmm0, %xmm0 # encoding: [0xc5,0xf9,0xfb,0xc1]
-; X86-AVX-NEXT:    vmovntdq %ymm0, (%eax) # encoding: [0xc5,0xfd,0xe7,0x00]
-; X86-AVX-NEXT:    vzeroupper # encoding: [0xc5,0xf8,0x77]
+; X86-AVX-NEXT:    vmovntdq %xmm0, (%eax) # encoding: [0xc5,0xf9,0xe7,0x00]
 ; X86-AVX-NEXT:    retl # encoding: [0xc3]
 ;
 ; X86-AVX512VL-LABEL: movnt_dq:
@@ -958,24 +924,21 @@ define void @movnt_dq(i8* %p, <2 x i64> %a1) nounwind {
 ; X86-AVX512VL-NEXT:    movl {{[0-9]+}}(%esp), %eax # encoding: [0x8b,0x44,0x24,0x04]
 ; X86-AVX512VL-NEXT:    vpcmpeqd %xmm1, %xmm1, %xmm1 # encoding: [0xc5,0xf1,0x76,0xc9]
 ; X86-AVX512VL-NEXT:    vpsubq %xmm1, %xmm0, %xmm0 # EVEX TO VEX Compression encoding: [0xc5,0xf9,0xfb,0xc1]
-; X86-AVX512VL-NEXT:    vmovntdq %ymm0, (%eax) # EVEX TO VEX Compression encoding: [0xc5,0xfd,0xe7,0x00]
-; X86-AVX512VL-NEXT:    vzeroupper # encoding: [0xc5,0xf8,0x77]
+; X86-AVX512VL-NEXT:    vmovntdq %xmm0, (%eax) # EVEX TO VEX Compression encoding: [0xc5,0xf9,0xe7,0x00]
 ; X86-AVX512VL-NEXT:    retl # encoding: [0xc3]
 ;
 ; X64-AVX-LABEL: movnt_dq:
 ; X64-AVX:       # %bb.0:
 ; X64-AVX-NEXT:    vpcmpeqd %xmm1, %xmm1, %xmm1 # encoding: [0xc5,0xf1,0x76,0xc9]
 ; X64-AVX-NEXT:    vpsubq %xmm1, %xmm0, %xmm0 # encoding: [0xc5,0xf9,0xfb,0xc1]
-; X64-AVX-NEXT:    vmovntdq %ymm0, (%rdi) # encoding: [0xc5,0xfd,0xe7,0x07]
-; X64-AVX-NEXT:    vzeroupper # encoding: [0xc5,0xf8,0x77]
+; X64-AVX-NEXT:    vmovntdq %xmm0, (%rdi) # encoding: [0xc5,0xf9,0xe7,0x07]
 ; X64-AVX-NEXT:    retq # encoding: [0xc3]
 ;
 ; X64-AVX512VL-LABEL: movnt_dq:
 ; X64-AVX512VL:       # %bb.0:
 ; X64-AVX512VL-NEXT:    vpcmpeqd %xmm1, %xmm1, %xmm1 # encoding: [0xc5,0xf1,0x76,0xc9]
 ; X64-AVX512VL-NEXT:    vpsubq %xmm1, %xmm0, %xmm0 # EVEX TO VEX Compression encoding: [0xc5,0xf9,0xfb,0xc1]
-; X64-AVX512VL-NEXT:    vmovntdq %ymm0, (%rdi) # EVEX TO VEX Compression encoding: [0xc5,0xfd,0xe7,0x07]
-; X64-AVX512VL-NEXT:    vzeroupper # encoding: [0xc5,0xf8,0x77]
+; X64-AVX512VL-NEXT:    vmovntdq %xmm0, (%rdi) # EVEX TO VEX Compression encoding: [0xc5,0xf9,0xe7,0x07]
 ; X64-AVX512VL-NEXT:    retq # encoding: [0xc3]
   %a2 = add <2 x i64> %a1, <i64 1, i64 1>
   %a3 = shufflevector <2 x i64> %a2, <2 x i64> undef, <4 x i32> <i32 0, i32 1, i32 undef, i32 undef>

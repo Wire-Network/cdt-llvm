@@ -10,7 +10,7 @@ if(WIN32 OR CYGWIN)
   set(LLVM_LINK_COMPONENTS Core Support)
 endif()
 
-add_llvm_loadable_module( LLVMEosioSoftfloat
+add_llvm_library( LLVMEosioSoftfloat MODULE BUILDTREE_ONLY
    EosioSoftfloat.cpp
 
   DEPENDS

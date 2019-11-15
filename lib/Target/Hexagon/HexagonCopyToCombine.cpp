@@ -1,9 +1,8 @@
 //===------- HexagonCopyToCombine.cpp - Hexagon Copy-To-Combine Pass ------===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 // This pass replaces transfer instructions by combine instructions.
@@ -255,8 +254,8 @@ static bool isUnsafeToMoveAcross(MachineInstr &MI, unsigned UseReg,
          MI.isMetaInstruction();
 }
 
-static unsigned UseReg(const MachineOperand& MO) {
-  return MO.isReg() ? MO.getReg() : 0;
+static Register UseReg(const MachineOperand& MO) {
+  return MO.isReg() ? MO.getReg() : Register();
 }
 
 /// isSafeToMoveTogether - Returns true if it is safe to move I1 next to I2 such
@@ -555,8 +554,7 @@ MachineInstr *HexagonCopyToCombine::findPairable(MachineInstr &I1,
     if ((!IsI1LowReg && !IsI2LowReg) || !isEvenReg(FirstRegIndex))
       continue;
 
-    // Check that the two instructions are combinable. V4 allows more
-    // instructions to be merged into a combine.
+    // Check that the two instructions are combinable.
     // The order matters because in a A2_tfrsi we might can encode a int8 as
     // the hi reg operand but only a uint6 as the low reg operand.
     if ((IsI2LowReg && !areCombinableOperations(TRI, I1, *I2, AllowC64)) ||

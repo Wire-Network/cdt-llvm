@@ -1,9 +1,8 @@
 //===- llvm/unittest/Support/Path.cpp - Path tests ------------------------===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 
@@ -26,6 +25,7 @@
 
 #ifdef _WIN32
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/Support/Chrono.h"
 #include <windows.h>
 #include <winerror.h>
 #endif
@@ -186,7 +186,7 @@ TEST(Support, Path) {
   }
 
   SmallString<32> Relative("foo.cpp");
-  ASSERT_NO_ERROR(sys::fs::make_absolute("/root", Relative));
+  sys::fs::make_absolute("/root", Relative);
   Relative[5] = '/'; // Fix up windows paths.
   ASSERT_EQ("/root/foo.cpp", Relative);
 }
@@ -345,35 +345,6 @@ TEST(Support, HomeDirectoryWithNoEnv) {
   if (OriginalEnv) ::setenv("HOME", OriginalEnv, 1);
 }
 #endif
-
-TEST(Support, UserCacheDirectory) {
-  SmallString<13> CacheDir;
-  SmallString<20> CacheDir2;
-  auto Status = path::user_cache_directory(CacheDir, "");
-  EXPECT_TRUE(Status ^ CacheDir.empty());
-
-  if (Status) {
-    EXPECT_TRUE(path::user_cache_directory(CacheDir2, "")); // should succeed
-    EXPECT_EQ(CacheDir, CacheDir2); // and return same paths
-
-    EXPECT_TRUE(path::user_cache_directory(CacheDir, "A", "B", "file.c"));
-    auto It = path::rbegin(CacheDir);
-    EXPECT_EQ("file.c", *It);
-    EXPECT_EQ("B", *++It);
-    EXPECT_EQ("A", *++It);
-    auto ParentDir = *++It;
-
-    // Test Unicode: "<user_cache_dir>/(pi)r^2/aleth.0"
-    EXPECT_TRUE(path::user_cache_directory(CacheDir2, "\xCF\x80r\xC2\xB2",
-                                           "\xE2\x84\xB5.0"));
-    auto It2 = path::rbegin(CacheDir2);
-    EXPECT_EQ("\xE2\x84\xB5.0", *It2);
-    EXPECT_EQ("\xCF\x80r\xC2\xB2", *++It2);
-    auto ParentDir2 = *++It2;
-
-    EXPECT_EQ(ParentDir, ParentDir2);
-  }
-}
 
 TEST(Support, TempDirectory) {
   SmallString<32> TempDir;
@@ -544,6 +515,8 @@ TEST_F(FileSystemTest, RealPath) {
   EXPECT_EQ(Expected, Actual);
 
   SmallString<64> HomeDir;
+
+  // This can fail if $HOME is not set and getpwuid fails.
   bool Result = llvm::sys::path::home_directory(HomeDir);
   if (Result) {
     ASSERT_NO_ERROR(fs::real_path(HomeDir, Expected));
@@ -554,6 +527,31 @@ TEST_F(FileSystemTest, RealPath) {
   }
 
   ASSERT_NO_ERROR(fs::remove_directories(Twine(TestDirectory) + "/test1"));
+}
+
+TEST_F(FileSystemTest, ExpandTilde) {
+  SmallString<64> Expected;
+  SmallString<64> Actual;
+  SmallString<64> HomeDir;
+
+  // This can fail if $HOME is not set and getpwuid fails.
+  bool Result = llvm::sys::path::home_directory(HomeDir);
+  if (Result) {
+    fs::expand_tilde(HomeDir, Expected);
+
+    fs::expand_tilde("~", Actual);
+    EXPECT_EQ(Expected, Actual);
+
+#ifdef _WIN32
+    Expected += "\\foo";
+    fs::expand_tilde("~\\foo", Actual);
+#else
+    Expected += "/foo";
+    fs::expand_tilde("~/foo", Actual);
+#endif
+
+    EXPECT_EQ(Expected, Actual);
+  }
 }
 
 #ifdef LLVM_ON_UNIX
@@ -580,6 +578,7 @@ TEST_F(FileSystemTest, TempFileKeepDiscard) {
   auto TempFileOrError = fs::TempFile::create(TestDirectory + "/test-%%%%");
   ASSERT_TRUE((bool)TempFileOrError);
   fs::TempFile File = std::move(*TempFileOrError);
+  ASSERT_EQ(-1, TempFileOrError->FD);
   ASSERT_FALSE((bool)File.keep(TestDirectory + "/keep"));
   ASSERT_FALSE((bool)File.discard());
   ASSERT_TRUE(fs::exists(TestDirectory + "/keep"));
@@ -591,6 +590,7 @@ TEST_F(FileSystemTest, TempFileDiscardDiscard) {
   auto TempFileOrError = fs::TempFile::create(TestDirectory + "/test-%%%%");
   ASSERT_TRUE((bool)TempFileOrError);
   fs::TempFile File = std::move(*TempFileOrError);
+  ASSERT_EQ(-1, TempFileOrError->FD);
   ASSERT_FALSE((bool)File.discard());
   ASSERT_FALSE((bool)File.discard());
   ASSERT_FALSE(fs::exists(TestDirectory + "/keep"));
@@ -678,6 +678,45 @@ TEST_F(FileSystemTest, TempFiles) {
   ASSERT_NO_ERROR(fs::createTemporaryFile(Path216, "", TempPath));
   ASSERT_NO_ERROR(fs::remove(Twine(TempPath)));
 #endif
+}
+
+TEST_F(FileSystemTest, TempFileCollisions) {
+  SmallString<128> TestDirectory;
+  ASSERT_NO_ERROR(
+      fs::createUniqueDirectory("CreateUniqueFileTest", TestDirectory));
+  FileRemover Cleanup(TestDirectory);
+  SmallString<128> Model = TestDirectory;
+  path::append(Model, "%.tmp");
+  SmallString<128> Path;
+  std::vector<fs::TempFile> TempFiles;
+
+  auto TryCreateTempFile = [&]() {
+    Expected<fs::TempFile> T = fs::TempFile::create(Model);
+    if (T) {
+      TempFiles.push_back(std::move(*T));
+      return true;
+    } else {
+      logAllUnhandledErrors(T.takeError(), errs(),
+                            "Failed to create temporary file: ");
+      return false;
+    }
+  };
+
+  // Our single-character template allows for 16 unique names. Check that
+  // calling TryCreateTempFile repeatedly results in 16 successes.
+  // Because the test depends on random numbers, it could theoretically fail.
+  // However, the probability of this happening is tiny: with 32 calls, each
+  // of which will retry up to 128 times, to not get a given digit we would
+  // have to fail at least 15 + 17 * 128 = 2191 attempts. The probability of
+  // 2191 attempts not producing a given hexadecimal digit is
+  // (1 - 1/16) ** 2191 or 3.88e-62.
+  int Successes = 0;
+  for (int i = 0; i < 32; ++i)
+    if (TryCreateTempFile()) ++Successes;
+  EXPECT_EQ(Successes, 16);
+
+  for (fs::TempFile &T : TempFiles)
+    cantFail(T.discard());
 }
 
 TEST_F(FileSystemTest, CreateDir) {
@@ -880,87 +919,62 @@ TEST_F(FileSystemTest, BrokenSymlinkDirectoryIteration) {
   v_t VisitedNonBrokenSymlinks;
   v_t VisitedBrokenSymlinks;
   std::error_code ec;
+  using testing::UnorderedElementsAre;
+  using testing::UnorderedElementsAreArray;
 
   // Broken symbol links are expected to throw an error.
   for (fs::directory_iterator i(Twine(TestDirectory) + "/symlink", ec), e;
        i != e; i.increment(ec)) {
-    if (ec == std::make_error_code(std::errc::no_such_file_or_directory)) {
+    ASSERT_NO_ERROR(ec);
+    if (i->status().getError() ==
+        std::make_error_code(std::errc::no_such_file_or_directory)) {
       VisitedBrokenSymlinks.push_back(path::filename(i->path()));
       continue;
     }
-
-    ASSERT_NO_ERROR(ec);
     VisitedNonBrokenSymlinks.push_back(path::filename(i->path()));
   }
-  llvm::sort(VisitedNonBrokenSymlinks.begin(), VisitedNonBrokenSymlinks.end());
-  llvm::sort(VisitedBrokenSymlinks.begin(), VisitedBrokenSymlinks.end());
-  v_t ExpectedNonBrokenSymlinks = {"b", "d"};
-  ASSERT_EQ(ExpectedNonBrokenSymlinks.size(), VisitedNonBrokenSymlinks.size());
-  ASSERT_TRUE(std::equal(VisitedNonBrokenSymlinks.begin(),
-                         VisitedNonBrokenSymlinks.end(),
-                         ExpectedNonBrokenSymlinks.begin()));
+  EXPECT_THAT(VisitedNonBrokenSymlinks, UnorderedElementsAre("b", "d"));
   VisitedNonBrokenSymlinks.clear();
 
-  v_t ExpectedBrokenSymlinks = {"a", "c", "e"};
-  ASSERT_EQ(ExpectedBrokenSymlinks.size(), VisitedBrokenSymlinks.size());
-  ASSERT_TRUE(std::equal(VisitedBrokenSymlinks.begin(),
-                         VisitedBrokenSymlinks.end(),
-                         ExpectedBrokenSymlinks.begin()));
+  EXPECT_THAT(VisitedBrokenSymlinks, UnorderedElementsAre("a", "c", "e"));
   VisitedBrokenSymlinks.clear();
 
   // Broken symbol links are expected to throw an error.
   for (fs::recursive_directory_iterator i(
       Twine(TestDirectory) + "/symlink", ec), e; i != e; i.increment(ec)) {
-    if (ec == std::make_error_code(std::errc::no_such_file_or_directory)) {
+    ASSERT_NO_ERROR(ec);
+    if (i->status().getError() ==
+        std::make_error_code(std::errc::no_such_file_or_directory)) {
       VisitedBrokenSymlinks.push_back(path::filename(i->path()));
       continue;
     }
-
-    ASSERT_NO_ERROR(ec);
     VisitedNonBrokenSymlinks.push_back(path::filename(i->path()));
   }
-  llvm::sort(VisitedNonBrokenSymlinks.begin(), VisitedNonBrokenSymlinks.end());
-  llvm::sort(VisitedBrokenSymlinks.begin(), VisitedBrokenSymlinks.end());
-  ExpectedNonBrokenSymlinks = {"b", "bb", "d", "da", "dd", "ddd", "ddd"};
-  ASSERT_EQ(ExpectedNonBrokenSymlinks.size(), VisitedNonBrokenSymlinks.size());
-  ASSERT_TRUE(std::equal(VisitedNonBrokenSymlinks.begin(),
-                         VisitedNonBrokenSymlinks.end(),
-                         ExpectedNonBrokenSymlinks.begin()));
+  EXPECT_THAT(VisitedNonBrokenSymlinks,
+              UnorderedElementsAre("b", "bb", "d", "da", "dd", "ddd", "ddd"));
   VisitedNonBrokenSymlinks.clear();
 
-  ExpectedBrokenSymlinks = {"a", "ba", "bc", "c", "e"};
-  ASSERT_EQ(ExpectedBrokenSymlinks.size(), VisitedBrokenSymlinks.size());
-  ASSERT_TRUE(std::equal(VisitedBrokenSymlinks.begin(),
-                         VisitedBrokenSymlinks.end(),
-                         ExpectedBrokenSymlinks.begin()));
+  EXPECT_THAT(VisitedBrokenSymlinks,
+              UnorderedElementsAre("a", "ba", "bc", "c", "e"));
   VisitedBrokenSymlinks.clear();
 
   for (fs::recursive_directory_iterator i(
       Twine(TestDirectory) + "/symlink", ec, /*follow_symlinks=*/false), e;
        i != e; i.increment(ec)) {
-    if (ec == std::make_error_code(std::errc::no_such_file_or_directory)) {
+    ASSERT_NO_ERROR(ec);
+    if (i->status().getError() ==
+        std::make_error_code(std::errc::no_such_file_or_directory)) {
       VisitedBrokenSymlinks.push_back(path::filename(i->path()));
       continue;
     }
-
-    ASSERT_NO_ERROR(ec);
     VisitedNonBrokenSymlinks.push_back(path::filename(i->path()));
   }
-  llvm::sort(VisitedNonBrokenSymlinks.begin(), VisitedNonBrokenSymlinks.end());
-  llvm::sort(VisitedBrokenSymlinks.begin(), VisitedBrokenSymlinks.end());
-  ExpectedNonBrokenSymlinks = {"a", "b", "ba", "bb", "bc", "c", "d", "da", "dd",
-                               "ddd", "e"};
-  ASSERT_EQ(ExpectedNonBrokenSymlinks.size(), VisitedNonBrokenSymlinks.size());
-  ASSERT_TRUE(std::equal(VisitedNonBrokenSymlinks.begin(),
-                         VisitedNonBrokenSymlinks.end(),
-                         ExpectedNonBrokenSymlinks.begin()));
+  EXPECT_THAT(VisitedNonBrokenSymlinks,
+              UnorderedElementsAreArray({"a", "b", "ba", "bb", "bc", "c", "d",
+                                         "da", "dd", "ddd", "e"}));
   VisitedNonBrokenSymlinks.clear();
 
-  ExpectedBrokenSymlinks = {};
-  ASSERT_EQ(ExpectedBrokenSymlinks.size(), VisitedBrokenSymlinks.size());
-  ASSERT_TRUE(std::equal(VisitedBrokenSymlinks.begin(),
-                         VisitedBrokenSymlinks.end(),
-                         ExpectedBrokenSymlinks.begin()));
+  EXPECT_THAT(VisitedBrokenSymlinks, UnorderedElementsAre());
   VisitedBrokenSymlinks.clear();
 
   ASSERT_NO_ERROR(fs::remove_directories(Twine(TestDirectory) + "/symlink"));
@@ -1070,7 +1084,7 @@ TEST_F(FileSystemTest, FileMapping) {
   std::error_code EC;
   StringRef Val("hello there");
   {
-    fs::mapped_file_region mfr(FileDescriptor,
+    fs::mapped_file_region mfr(fs::convertFDToNativeFile(FileDescriptor),
                                fs::mapped_file_region::readwrite, Size, 0, EC);
     ASSERT_NO_ERROR(EC);
     std::copy(Val.begin(), Val.end(), mfr.data());
@@ -1085,14 +1099,16 @@ TEST_F(FileSystemTest, FileMapping) {
     int FD;
     EC = fs::openFileForRead(Twine(TempPath), FD);
     ASSERT_NO_ERROR(EC);
-    fs::mapped_file_region mfr(FD, fs::mapped_file_region::readonly, Size, 0, EC);
+    fs::mapped_file_region mfr(fs::convertFDToNativeFile(FD),
+                               fs::mapped_file_region::readonly, Size, 0, EC);
     ASSERT_NO_ERROR(EC);
 
     // Verify content
     EXPECT_EQ(StringRef(mfr.const_data()), Val);
 
     // Unmap temp file
-    fs::mapped_file_region m(FD, fs::mapped_file_region::readonly, Size, 0, EC);
+    fs::mapped_file_region m(fs::convertFDToNativeFile(FD),
+                             fs::mapped_file_region::readonly, Size, 0, EC);
     ASSERT_NO_ERROR(EC);
     ASSERT_EQ(close(FD), 0);
   }
@@ -1251,8 +1267,38 @@ TEST_F(FileSystemTest, OpenFileForRead) {
     ASSERT_NO_ERROR(fs::getUniqueID(Twine(ResultPath), D2));
     ASSERT_EQ(D1, D2);
   }
-
   ::close(FileDescriptor);
+  ::close(FileDescriptor2);
+
+#ifdef _WIN32
+  // Since Windows Vista, file access time is not updated by default.
+  // This is instead updated manually by openFileForRead.
+  // https://blogs.technet.microsoft.com/filecab/2006/11/07/disabling-last-access-time-in-windows-vista-to-improve-ntfs-performance/
+  // This part of the unit test is Windows specific as the updating of
+  // access times can be disabled on Linux using /etc/fstab.
+
+  // Set access time to UNIX epoch.
+  ASSERT_NO_ERROR(sys::fs::openFileForWrite(Twine(TempPath), FileDescriptor,
+                                            fs::CD_OpenExisting));
+  TimePoint<> Epoch(std::chrono::milliseconds(0));
+  ASSERT_NO_ERROR(fs::setLastAccessAndModificationTime(FileDescriptor, Epoch));
+  ::close(FileDescriptor);
+
+  // Open the file and ensure access time is updated, when forced.
+  ASSERT_NO_ERROR(fs::openFileForRead(Twine(TempPath), FileDescriptor,
+                                      fs::OF_UpdateAtime, &ResultPath));
+
+  sys::fs::file_status Status;
+  ASSERT_NO_ERROR(sys::fs::status(FileDescriptor, Status));
+  auto FileAccessTime = Status.getLastAccessedTime();
+
+  ASSERT_NE(Epoch, FileAccessTime);
+  ::close(FileDescriptor);
+
+  // Ideally this test would include a case when ATime is not forced to update,
+  // however the expected behaviour will differ depending on the configuration
+  // of the Windows file system.
+#endif
 }
 
 static void createFileWithData(const Twine &Path, bool ShouldExistBefore,
@@ -1458,6 +1504,85 @@ TEST_F(FileSystemTest, ReadWriteFileCanReadOrWrite) {
   verifyWrite(FD, "Buzz", true);
 }
 
+TEST_F(FileSystemTest, is_local) {
+  bool TestDirectoryIsLocal;
+  ASSERT_NO_ERROR(fs::is_local(TestDirectory, TestDirectoryIsLocal));
+  EXPECT_EQ(TestDirectoryIsLocal, fs::is_local(TestDirectory));
+
+  int FD;
+  SmallString<128> TempPath;
+  ASSERT_NO_ERROR(
+      fs::createUniqueFile(Twine(TestDirectory) + "/temp", FD, TempPath));
+  FileRemover Cleanup(TempPath);
+
+  // Make sure it exists.
+  ASSERT_TRUE(sys::fs::exists(Twine(TempPath)));
+
+  bool TempFileIsLocal;
+  ASSERT_NO_ERROR(fs::is_local(FD, TempFileIsLocal));
+  EXPECT_EQ(TempFileIsLocal, fs::is_local(FD));
+  ::close(FD);
+
+  // Expect that the file and its parent directory are equally local or equally
+  // remote.
+  EXPECT_EQ(TestDirectoryIsLocal, TempFileIsLocal);
+}
+
+TEST_F(FileSystemTest, getUmask) {
+#ifdef _WIN32
+  EXPECT_EQ(fs::getUmask(), 0U) << "Should always be 0 on Windows.";
+#else
+  unsigned OldMask = ::umask(0022);
+  unsigned CurrentMask = fs::getUmask();
+  EXPECT_EQ(CurrentMask, 0022U)
+      << "getUmask() didn't return previously set umask()";
+  EXPECT_EQ(::umask(OldMask), 0022U) << "getUmask() may have changed umask()";
+#endif
+}
+
+TEST_F(FileSystemTest, RespectUmask) {
+#ifndef _WIN32
+  unsigned OldMask = ::umask(0022);
+
+  int FD;
+  SmallString<128> TempPath;
+  ASSERT_NO_ERROR(fs::createTemporaryFile("prefix", "temp", FD, TempPath));
+
+  fs::perms AllRWE = static_cast<fs::perms>(0777);
+
+  ASSERT_NO_ERROR(fs::setPermissions(TempPath, AllRWE));
+
+  ErrorOr<fs::perms> Perms = fs::getPermissions(TempPath);
+  ASSERT_TRUE(!!Perms);
+  EXPECT_EQ(Perms.get(), AllRWE) << "Should have ignored umask by default";
+
+  ASSERT_NO_ERROR(fs::setPermissions(TempPath, AllRWE));
+
+  Perms = fs::getPermissions(TempPath);
+  ASSERT_TRUE(!!Perms);
+  EXPECT_EQ(Perms.get(), AllRWE) << "Should have ignored umask";
+
+  ASSERT_NO_ERROR(
+      fs::setPermissions(FD, static_cast<fs::perms>(AllRWE & ~fs::getUmask())));
+  Perms = fs::getPermissions(TempPath);
+  ASSERT_TRUE(!!Perms);
+  EXPECT_EQ(Perms.get(), static_cast<fs::perms>(0755))
+      << "Did not respect umask";
+
+  (void)::umask(0057);
+
+  ASSERT_NO_ERROR(
+      fs::setPermissions(FD, static_cast<fs::perms>(AllRWE & ~fs::getUmask())));
+  Perms = fs::getPermissions(TempPath);
+  ASSERT_TRUE(!!Perms);
+  EXPECT_EQ(Perms.get(), static_cast<fs::perms>(0720))
+      << "Did not respect umask";
+
+  (void)::umask(OldMask);
+  (void)::close(FD);
+#endif
+}
+
 TEST_F(FileSystemTest, set_current_path) {
   SmallString<128> path;
 
@@ -1630,7 +1755,10 @@ TEST_F(FileSystemTest, permissions) {
   EXPECT_TRUE(CheckPermissions(fs::set_gid_on_exe));
 
   // Modern BSDs require root to set the sticky bit on files.
-#if !defined(__FreeBSD__) && !defined(__NetBSD__) && !defined(__OpenBSD__)
+  // AIX and Solaris without root will mask off (i.e., lose) the sticky bit
+  // on files.
+#if !defined(__FreeBSD__) && !defined(__NetBSD__) && !defined(__OpenBSD__) &&  \
+    !defined(_AIX) && !(defined(__sun__) && defined(__svr4__))
   EXPECT_EQ(fs::setPermissions(TempPath, fs::sticky_bit), NoError);
   EXPECT_TRUE(CheckPermissions(fs::sticky_bit));
 
@@ -1650,7 +1778,7 @@ TEST_F(FileSystemTest, permissions) {
 
   EXPECT_EQ(fs::setPermissions(TempPath, fs::all_perms), NoError);
   EXPECT_TRUE(CheckPermissions(fs::all_perms));
-#endif // !FreeBSD && !NetBSD && !OpenBSD
+#endif // !FreeBSD && !NetBSD && !OpenBSD && !AIX
 
   EXPECT_EQ(fs::setPermissions(TempPath, fs::all_perms & ~fs::sticky_bit),
                                NoError);

@@ -1,9 +1,8 @@
 //===- ThinLTOBitcodeWriter.cpp - Bitcode writing pass for ThinLTO --------===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 
@@ -154,7 +153,8 @@ void simplifyExternals(Module &M) {
       continue;
 
     Function *NewF =
-        Function::Create(EmptyFT, GlobalValue::ExternalLinkage, "", &M);
+        Function::Create(EmptyFT, GlobalValue::ExternalLinkage,
+                         F.getAddressSpace(), "", &M);
     NewF->setVisibility(F.getVisibility());
     NewF->takeName(&F);
     F.replaceAllUsesWith(ConstantExpr::getBitCast(NewF, F.getType()));
@@ -237,7 +237,7 @@ void splitAndWriteThinLTOBitcode(
   // sound because the virtual constant propagation optimizations effectively
   // inline all implementations of the virtual function into each call site,
   // rather than using function attributes to perform local optimization.
-  std::set<const Function *> EligibleVirtualFns;
+  DenseSet<const Function *> EligibleVirtualFns;
   // If any member of a comdat lives in MergedM, put all members of that
   // comdat in MergedM to keep the comdat together.
   DenseSet<const Comdat *> MergedMComdats;
@@ -417,24 +417,53 @@ void splitAndWriteThinLTOBitcode(
   }
 }
 
+// Check if the LTO Unit splitting has been enabled.
+bool enableSplitLTOUnit(Module &M) {
+  bool EnableSplitLTOUnit = false;
+  if (auto *MD = mdconst::extract_or_null<ConstantInt>(
+          M.getModuleFlag("EnableSplitLTOUnit")))
+    EnableSplitLTOUnit = MD->getZExtValue();
+  return EnableSplitLTOUnit;
+}
+
 // Returns whether this module needs to be split because it uses type metadata.
-bool requiresSplit(Module &M) {
+bool hasTypeMetadata(Module &M) {
   for (auto &GO : M.global_objects()) {
     if (GO.hasMetadata(LLVMContext::MD_type))
       return true;
   }
-
   return false;
 }
 
 void writeThinLTOBitcode(raw_ostream &OS, raw_ostream *ThinLinkOS,
                          function_ref<AAResults &(Function &)> AARGetter,
                          Module &M, const ModuleSummaryIndex *Index) {
-  // See if this module has any type metadata. If so, we need to split it.
-  if (requiresSplit(M))
-    return splitAndWriteThinLTOBitcode(OS, ThinLinkOS, AARGetter, M);
+  std::unique_ptr<ModuleSummaryIndex> NewIndex = nullptr;
+  // See if this module has any type metadata. If so, we try to split it
+  // or at least promote type ids to enable WPD.
+  if (hasTypeMetadata(M)) {
+    if (enableSplitLTOUnit(M))
+      return splitAndWriteThinLTOBitcode(OS, ThinLinkOS, AARGetter, M);
+    // Promote type ids as needed for index-based WPD.
+    std::string ModuleId = getUniqueModuleId(&M);
+    if (!ModuleId.empty()) {
+      promoteTypeIds(M, ModuleId);
+      // Need to rebuild the index so that it contains type metadata
+      // for the newly promoted type ids.
+      // FIXME: Probably should not bother building the index at all
+      // in the caller of writeThinLTOBitcode (which does so via the
+      // ModuleSummaryIndexAnalysis pass), since we have to rebuild it
+      // anyway whenever there is type metadata (here or in
+      // splitAndWriteThinLTOBitcode). Just always build it once via the
+      // buildModuleSummaryIndex when Module(s) are ready.
+      ProfileSummaryInfo PSI(M);
+      NewIndex = llvm::make_unique<ModuleSummaryIndex>(
+          buildModuleSummaryIndex(M, nullptr, &PSI));
+      Index = NewIndex.get();
+    }
+  }
 
-  // Otherwise we can just write it out as a regular module.
+  // Write it out as an unsplit ThinLTO module.
 
   // Save the module hash produced for the full bitcode, which will
   // be used in the backends, and use that in the minimized bitcode

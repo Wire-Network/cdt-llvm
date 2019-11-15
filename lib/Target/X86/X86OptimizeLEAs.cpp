@@ -1,9 +1,8 @@
 //===- X86OptimizeLEAs.cpp - optimize usage of LEA instructions -----------===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
@@ -510,12 +509,16 @@ bool OptimizeLEAPass::removeRedundantAddrCalc(MemOpMap &LEAs) {
 
     MemOpNo += X86II::getOperandBias(Desc);
 
+    // Do not call chooseBestLEA if there was no matching LEA
+    auto Insns = LEAs.find(getMemOpKey(MI, MemOpNo));
+    if (Insns == LEAs.end())
+      continue;
+
     // Get the best LEA instruction to replace address calculation.
     MachineInstr *DefMI;
     int64_t AddrDispShift;
     int Dist;
-    if (!chooseBestLEA(LEAs[getMemOpKey(MI, MemOpNo)], MI, DefMI, AddrDispShift,
-                       Dist))
+    if (!chooseBestLEA(Insns->second, MI, DefMI, AddrDispShift, Dist))
       continue;
 
     // If LEA occurs before current instruction, we can freely replace
@@ -565,11 +568,8 @@ MachineInstr *OptimizeLEAPass::replaceDebugValue(MachineInstr &MI,
                                                  unsigned VReg,
                                                  int64_t AddrDispShift) {
   DIExpression *Expr = const_cast<DIExpression *>(MI.getDebugExpression());
-
   if (AddrDispShift != 0)
-    Expr = DIExpression::prepend(Expr, DIExpression::NoDeref, AddrDispShift,
-                                 DIExpression::NoDeref,
-                                 DIExpression::WithStackValue);
+    Expr = DIExpression::prepend(Expr, DIExpression::StackValue, AddrDispShift);
 
   // Replace DBG_VALUE instruction with modified version.
   MachineBasicBlock *MBB = MI.getParent();
@@ -697,7 +697,7 @@ bool OptimizeLEAPass::runOnMachineFunction(MachineFunction &MF) {
 
     // Remove redundant address calculations. Do it only for -Os/-Oz since only
     // a code size gain is expected from this part of the pass.
-    if (MF.getFunction().optForSize())
+    if (MF.getFunction().hasOptSize())
       Changed |= removeRedundantAddrCalc(LEAs);
   }
 

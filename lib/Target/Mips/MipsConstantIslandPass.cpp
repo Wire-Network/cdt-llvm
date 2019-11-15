@@ -1,14 +1,13 @@
 //===- MipsConstantIslandPass.cpp - Emit Pc Relative loads ----------------===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
 // This pass is used to make Pc relative loads of constants.
-// For now, only Mips16 will use this. 
+// For now, only Mips16 will use this.
 //
 // Loading constants inline is expensive on Mips16 and it's in general better
 // to place the constant nearby in code space and then it can be loaded with a
@@ -842,9 +841,7 @@ void MipsConstantIslands::updateForInsertedWaterBlock
 
   // Next, update WaterList.  Specifically, we need to add NewMBB as having
   // available water after it.
-  water_iterator IP =
-    std::lower_bound(WaterList.begin(), WaterList.end(), NewBB,
-                     CompareMBBNumbers);
+  water_iterator IP = llvm::lower_bound(WaterList, NewBB, CompareMBBNumbers);
   WaterList.insert(IP, NewBB);
 }
 
@@ -894,9 +891,7 @@ MipsConstantIslands::splitBlockBeforeInstr(MachineInstr &MI) {
   // available water after it (but not if it's already there, which happens
   // when splitting before a conditional branch that is followed by an
   // unconditional branch - in that case we want to insert NewBB).
-  water_iterator IP =
-    std::lower_bound(WaterList.begin(), WaterList.end(), OrigBB,
-                     CompareMBBNumbers);
+  water_iterator IP = llvm::lower_bound(WaterList, OrigBB, CompareMBBNumbers);
   MachineBasicBlock* WaterBB = *IP;
   if (WaterBB == OrigBB)
     WaterList.insert(std::next(IP), NewBB);
@@ -1171,7 +1166,7 @@ static inline unsigned getUnconditionalBrDisp(int Opc) {
 /// findAvailableWater - Look for an existing entry in the WaterList in which
 /// we can place the CPE referenced from U so it's within range of U's MI.
 /// Returns true if found, false if not.  If it returns true, WaterIter
-/// is set to the WaterList entry.  
+/// is set to the WaterList entry.
 /// To ensure that this pass
 /// terminates, the CPE location for a particular CPUser is only allowed to
 /// move to a lower address, so search backward from the end of the list and
@@ -1231,7 +1226,7 @@ void MipsConstantIslands::createNewWater(unsigned CPUserIndex,
   const BasicBlockInfo &UserBBI = BBInfo[UserMBB->getNumber()];
 
   // If the block does not end in an unconditional branch already, and if the
-  // end of the block is within range, make new water there.  
+  // end of the block is within range, make new water there.
   if (BBHasFallthrough(UserMBB)) {
     // Size of branch to insert.
     unsigned Delta = 2;
@@ -1258,7 +1253,7 @@ void MipsConstantIslands::createNewWater(unsigned CPUserIndex,
     }
   }
 
-  // What a big block.  Find a place within the block to split it.  
+  // What a big block.  Find a place within the block to split it.
 
   // Try to split the block so it's fully aligned.  Compute the latest split
   // point where we can add a 4-byte branch instruction, and then align to
@@ -1582,7 +1577,7 @@ MipsConstantIslands::fixupConditionalBr(ImmBranch &Br) {
   MachineInstr *BMI = &MBB->back();
   bool NeedSplit = (BMI != MI) || !BBHasFallthrough(MBB);
   unsigned OppositeBranchOpcode = TII->getOppositeBranchOpc(Opcode);
- 
+
   ++NumCBrFixed;
   if (BMI != MI) {
     if (std::next(MachineBasicBlock::iterator(MI)) == std::prev(MBB->end()) &&
@@ -1595,7 +1590,7 @@ MipsConstantIslands::fixupConditionalBr(ImmBranch &Br) {
       // bnez L2
       // b   L1
       unsigned BMITargetOperand = branchTargetOperand(BMI);
-      MachineBasicBlock *NewDest = 
+      MachineBasicBlock *NewDest =
         BMI->getOperand(BMITargetOperand).getMBB();
       if (isBBInRange(MI, NewDest, Br.MaxDisp)) {
         LLVM_DEBUG(

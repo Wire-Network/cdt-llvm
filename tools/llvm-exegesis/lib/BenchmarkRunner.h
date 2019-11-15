@@ -1,9 +1,8 @@
 //===-- BenchmarkRunner.h ---------------------------------------*- C++ -*-===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 ///
@@ -17,13 +16,17 @@
 #define LLVM_TOOLS_LLVM_EXEGESIS_BENCHMARKRUNNER_H
 
 #include "Assembler.h"
+#include "BenchmarkCode.h"
 #include "BenchmarkResult.h"
 #include "LlvmState.h"
-#include "RegisterAliasing.h"
+#include "MCInstrDescView.h"
 #include "llvm/MC/MCInst.h"
 #include "llvm/Support/Error.h"
+#include <cstdlib>
+#include <memory>
 #include <vector>
 
+namespace llvm {
 namespace exegesis {
 
 // A class representing failures that happened during Benchmark, they are used
@@ -33,68 +36,60 @@ public:
   BenchmarkFailure(const llvm::Twine &S);
 };
 
-// A collection of instructions that are to be assembled, executed and measured.
-struct BenchmarkConfiguration {
-  // This code is run before the Snippet is iterated. Since it is part of the
-  // measurement it should be as short as possible. It is usually used to setup
-  // the content of the Registers.
-  std::vector<llvm::MCInst> SnippetSetup;
-
-  // The sequence of instructions that are to be repeated.
-  std::vector<llvm::MCInst> Snippet;
-
-  // Informations about how this configuration was built.
-  std::string Info;
-};
-
 // Common code for all benchmark modes.
 class BenchmarkRunner {
 public:
-  explicit BenchmarkRunner(const LLVMState &State);
-
-  // Subtargets can disable running benchmarks for some instructions by
-  // returning an error here.
-  class InstructionFilter {
-  public:
-    virtual ~InstructionFilter();
-
-    virtual llvm::Error shouldRun(const LLVMState &State,
-                                  unsigned Opcode) const {
-      return llvm::ErrorSuccess();
-    }
-  };
+  explicit BenchmarkRunner(const LLVMState &State,
+                           InstructionBenchmark::ModeE Mode);
 
   virtual ~BenchmarkRunner();
 
-  llvm::Expected<std::vector<InstructionBenchmark>>
-  run(unsigned Opcode, const InstructionFilter &Filter,
-      unsigned NumRepetitions);
+  InstructionBenchmark runConfiguration(const BenchmarkCode &Configuration,
+                                        unsigned NumRepetitions,
+                                        bool DumpObjectToDisk) const;
+
+  // Scratch space to run instructions that touch memory.
+  struct ScratchSpace {
+    static constexpr const size_t kAlignment = 1024;
+    static constexpr const size_t kSize = 1 << 20; // 1MB.
+    ScratchSpace()
+        : UnalignedPtr(llvm::make_unique<char[]>(kSize + kAlignment)),
+          AlignedPtr(
+              UnalignedPtr.get() + kAlignment -
+              (reinterpret_cast<intptr_t>(UnalignedPtr.get()) % kAlignment)) {}
+    char *ptr() const { return AlignedPtr; }
+    void clear() { std::memset(ptr(), 0, kSize); }
+
+  private:
+    const std::unique_ptr<char[]> UnalignedPtr;
+    char *const AlignedPtr;
+  };
+
+  // A helper to measure counters while executing a function in a sandboxed
+  // context.
+  class FunctionExecutor {
+  public:
+    virtual ~FunctionExecutor();
+    virtual llvm::Expected<int64_t>
+    runAndMeasure(const char *Counters) const = 0;
+  };
 
 protected:
   const LLVMState &State;
-  const llvm::MCInstrInfo &MCInstrInfo;
-  const llvm::MCRegisterInfo &MCRegisterInfo;
-  const RegisterAliasingTrackerCache RATC;
+  const InstructionBenchmark::ModeE Mode;
 
 private:
-  InstructionBenchmark runOne(const BenchmarkConfiguration &Configuration,
-                              unsigned Opcode, unsigned NumRepetitions) const;
-
-  virtual InstructionBenchmark::ModeE getMode() const = 0;
-
-  virtual llvm::Expected<std::vector<BenchmarkConfiguration>>
-  createConfigurations(unsigned Opcode) const = 0;
-
-  virtual std::vector<BenchmarkMeasure>
-  runMeasurements(const ExecutableFunction &EF,
-                  const unsigned NumRepetitions) const = 0;
+  virtual llvm::Expected<std::vector<BenchmarkMeasure>>
+  runMeasurements(const FunctionExecutor &Executor) const = 0;
 
   llvm::Expected<std::string>
-  writeObjectFile(llvm::ArrayRef<llvm::MCInst> Code) const;
-  llvm::Expected<ExecutableFunction>
-  createExecutableFunction(llvm::ArrayRef<llvm::MCInst> Code) const;
+  writeObjectFile(const BenchmarkCode &Configuration,
+                  llvm::ArrayRef<llvm::MCInst> Code) const;
+
+  const std::unique_ptr<ScratchSpace> Scratch;
 };
 
 } // namespace exegesis
+} // namespace llvm
 
 #endif // LLVM_TOOLS_LLVM_EXEGESIS_BENCHMARKRUNNER_H

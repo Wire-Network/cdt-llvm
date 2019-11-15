@@ -1,9 +1,8 @@
 //===- HexagonGenInsert.cpp -----------------------------------------------===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 
@@ -437,7 +436,7 @@ namespace {
 } // end anonymous namespace
 
 void OrderedRegisterList::insert(unsigned VR) {
-  iterator L = std::lower_bound(Seq.begin(), Seq.end(), VR, Ord);
+  iterator L = llvm::lower_bound(Seq, VR, Ord);
   if (L == Seq.end())
     Seq.push_back(VR);
   else
@@ -450,7 +449,7 @@ void OrderedRegisterList::insert(unsigned VR) {
 }
 
 void OrderedRegisterList::remove(unsigned VR) {
-  iterator L = std::lower_bound(Seq.begin(), Seq.end(), VR, Ord);
+  iterator L = llvm::lower_bound(Seq, VR, Ord);
   if (L != Seq.end())
     Seq.erase(L);
 }
@@ -632,7 +631,7 @@ void HexagonGenInsert::buildOrderingBT(RegisterOrdering &RB,
   SortableVectorType VRs;
   for (RegisterOrdering::iterator I = RB.begin(), E = RB.end(); I != E; ++I)
     VRs.push_back(I->first);
-  llvm::sort(VRs.begin(), VRs.end(), LexCmp);
+  llvm::sort(VRs, LexCmp);
   // Transfer the results to the outgoing register ordering.
   for (unsigned i = 0, n = VRs.size(); i < n; ++i)
     RO.insert(std::make_pair(VRs[i], i));
