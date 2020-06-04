@@ -1,9 +1,8 @@
 //===-- llc.cpp - Implement the LLVM Native Code Generator ----------------===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
@@ -32,6 +31,7 @@
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/LegacyPassManager.h"
 #include "llvm/IR/Module.h"
+#include "llvm/IR/RemarkStreamer.h"
 #include "llvm/IR/Verifier.h"
 #include "llvm/IRReader/IRReader.h"
 #include "llvm/MC/SubtargetFeature.h"
@@ -48,6 +48,7 @@
 #include "llvm/Support/TargetRegistry.h"
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/Support/ToolOutputFile.h"
+#include "llvm/Support/WithColor.h"
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Transforms/Utils/Cloning.h"
 #include <memory>
@@ -132,20 +133,32 @@ static cl::opt<bool> DiscardValueNames(
 
 static cl::list<std::string> IncludeDirs("I", cl::desc("include search path"));
 
-static cl::opt<bool> PassRemarksWithHotness(
+static cl::opt<bool> RemarksWithHotness(
     "pass-remarks-with-hotness",
     cl::desc("With PGO, include profile count in optimization remarks"),
     cl::Hidden);
 
-static cl::opt<unsigned> PassRemarksHotnessThreshold(
-    "pass-remarks-hotness-threshold",
-    cl::desc("Minimum profile count required for an optimization remark to be output"),
-    cl::Hidden);
+static cl::opt<unsigned>
+    RemarksHotnessThreshold("pass-remarks-hotness-threshold",
+                            cl::desc("Minimum profile count required for "
+                                     "an optimization remark to be output"),
+                            cl::Hidden);
 
 static cl::opt<std::string>
     RemarksFilename("pass-remarks-output",
-                    cl::desc("YAML output filename for pass remarks"),
+                    cl::desc("Output filename for pass remarks"),
                     cl::value_desc("filename"));
+
+static cl::opt<std::string>
+    RemarksPasses("pass-remarks-filter",
+                  cl::desc("Only record optimization remarks from passes whose "
+                           "names match the given regular expression"),
+                  cl::value_desc("regex"));
+
+static cl::opt<std::string> RemarksFormat(
+    "pass-remarks-format",
+    cl::desc("The format used for serializing remarks (default: YAML)"),
+    cl::value_desc("format"), cl::init("yaml"));
 
 namespace {
 static ManagedStatic<std::vector<std::string>> RunPassNames;
@@ -231,7 +244,7 @@ static std::unique_ptr<ToolOutputFile> GetOutputStream(const char *TargetName,
     OpenFlags |= sys::fs::F_Text;
   auto FDOut = llvm::make_unique<ToolOutputFile>(OutputFilename, EC, OpenFlags);
   if (EC) {
-    errs() << EC.message() << '\n';
+    WithColor::error() << EC.message() << '\n';
     return nullptr;
   }
 
@@ -267,7 +280,7 @@ static void InlineAsmDiagHandler(const SMDiagnostic &SMD, void *Context,
 
   // For testing purposes, we print the LocCookie here.
   if (LocCookie)
-    errs() << "note: !srcloc = " << LocCookie << "\n";
+    WithColor::note() << "!srcloc = " << LocCookie << "\n";
 }
 
 // main - Entry point for the llc compiler.
@@ -301,6 +314,7 @@ int main(int argc, char **argv) {
   initializeVectorization(*Registry);
   initializeScalarizeMaskedMemIntrinPass(*Registry);
   initializeExpandReductionsPass(*Registry);
+  initializeHardwareLoopsPass(*Registry);
 
   // Initialize debugging passes.
   initializeScavengerTestPass(*Registry);
@@ -318,28 +332,20 @@ int main(int argc, char **argv) {
       llvm::make_unique<LLCDiagnosticHandler>(&HasError));
   Context.setInlineAsmDiagnosticHandler(InlineAsmDiagHandler, &HasError);
 
-  if (PassRemarksWithHotness)
-    Context.setDiagnosticsHotnessRequested(true);
-
-  if (PassRemarksHotnessThreshold)
-    Context.setDiagnosticsHotnessThreshold(PassRemarksHotnessThreshold);
-
-  std::unique_ptr<ToolOutputFile> YamlFile;
-  if (RemarksFilename != "") {
-    std::error_code EC;
-    YamlFile =
-        llvm::make_unique<ToolOutputFile>(RemarksFilename, EC, sys::fs::F_None);
-    if (EC) {
-      errs() << EC.message() << '\n';
-      return 1;
-    }
-    Context.setDiagnosticsOutputFile(
-        llvm::make_unique<yaml::Output>(YamlFile->os()));
+  Expected<std::unique_ptr<ToolOutputFile>> RemarksFileOrErr =
+      setupOptimizationRemarks(Context, RemarksFilename, RemarksPasses,
+                               RemarksFormat, RemarksWithHotness,
+                               RemarksHotnessThreshold);
+  if (Error E = RemarksFileOrErr.takeError()) {
+    WithColor::error(errs(), argv[0]) << toString(std::move(E)) << '\n';
+    return 1;
   }
+  std::unique_ptr<ToolOutputFile> RemarksFile = std::move(*RemarksFileOrErr);
 
   if (InputLanguage != "" && InputLanguage != "ir" &&
       InputLanguage != "mir") {
-    errs() << argv[0] << "Input language must be '', 'IR' or 'MIR'\n";
+    WithColor::error(errs(), argv[0])
+        << "input language must be '', 'IR' or 'MIR'\n";
     return 1;
   }
 
@@ -349,8 +355,8 @@ int main(int argc, char **argv) {
     if (int RetVal = compileModule(argv, Context))
       return RetVal;
 
-  if (YamlFile)
-    YamlFile->keep();
+  if (RemarksFile)
+    RemarksFile->keep();
   return 0;
 }
 
@@ -362,7 +368,8 @@ static bool addPass(PassManagerBase &PM, const char *argv0,
   const PassRegistry *PR = PassRegistry::getPassRegistry();
   const PassInfo *PI = PR->getPassInfo(PassName);
   if (!PI) {
-    errs() << argv0 << ": run-pass " << PassName << " is not registered.\n";
+    WithColor::error(errs(), argv0)
+        << "run-pass " << PassName << " is not registered.\n";
     return true;
   }
 
@@ -370,7 +377,8 @@ static bool addPass(PassManagerBase &PM, const char *argv0,
   if (PI->getNormalCtor())
     P = PI->getNormalCtor()();
   else {
-    errs() << argv0 << ": cannot create pass: " << PI->getPassName() << "\n";
+    WithColor::error(errs(), argv0)
+        << "cannot create pass: " << PI->getPassName() << "\n";
     return true;
   }
   std::string Banner = std::string("After ") + std::string(P->getPassName());
@@ -400,7 +408,7 @@ static int compileModule(char **argv, LLVMContext &Context) {
     } else
       M = parseIRFile(InputFilename, Err, Context, false);
     if (!M) {
-      Err.print(argv[0], errs());
+      Err.print(argv[0], WithColor::error(errs(), argv[0]));
       return 1;
     }
 
@@ -420,7 +428,7 @@ static int compileModule(char **argv, LLVMContext &Context) {
   const Target *TheTarget = TargetRegistry::lookupTarget(MArch, TheTriple,
                                                          Error);
   if (!TheTarget) {
-    errs() << argv[0] << ": " << Error;
+    WithColor::error(errs(), argv[0]) << Error;
     return 1;
   }
 
@@ -429,7 +437,7 @@ static int compileModule(char **argv, LLVMContext &Context) {
   CodeGenOpt::Level OLvl = CodeGenOpt::Default;
   switch (OptLevel) {
   default:
-    errs() << argv[0] << ": invalid optimization level.\n";
+    WithColor::error(errs(), argv[0]) << "invalid optimization level.\n";
     return 1;
   case ' ': break;
   case '0': OLvl = CodeGenOpt::None; break;
@@ -474,7 +482,7 @@ static int compileModule(char **argv, LLVMContext &Context) {
     DwoOut = llvm::make_unique<ToolOutputFile>(SplitDwarfOutputFile, EC,
                                                sys::fs::F_None);
     if (EC) {
-      errs() << EC.message() << '\n';
+      WithColor::error(errs(), argv[0]) << EC.message() << '\n';
       return 1;
     }
   }
@@ -500,8 +508,9 @@ static int compileModule(char **argv, LLVMContext &Context) {
   // Verify module immediately to catch problems before doInitialization() is
   // called on any passes.
   if (!NoVerify && verifyModule(*M, &errs())) {
-    errs() << argv[0] << ": " << InputFilename
-           << ": error: input module is broken!\n";
+    std::string Prefix =
+        (Twine(argv[0]) + Twine(": ") + Twine(InputFilename)).str();
+    WithColor::error(errs(), Prefix) << "input module is broken!\n";
     return 1;
   }
 
@@ -511,8 +520,8 @@ static int compileModule(char **argv, LLVMContext &Context) {
 
   if (RelaxAll.getNumOccurrences() > 0 &&
       FileType != TargetMachine::CGFT_ObjectFile)
-    errs() << argv[0]
-             << ": warning: ignoring -mc-relax-all because filetype != obj";
+    WithColor::warning(errs(), argv[0])
+        << ": warning: ignoring -mc-relax-all because filetype != obj";
 
   {
     raw_pwrite_stream *OS = &Out->os();
@@ -536,13 +545,15 @@ static int compileModule(char **argv, LLVMContext &Context) {
     // selection.
     if (!RunPassNames->empty()) {
       if (!MIR) {
-        errs() << argv0 << ": run-pass is for .mir file only.\n";
+        WithColor::warning(errs(), argv[0])
+            << "run-pass is for .mir file only.\n";
         return 1;
       }
       TargetPassConfig &TPC = *LLVMTM.createPassConfig(PM);
       if (TPC.hasLimitedCodeGenPipeline()) {
-        errs() << argv0 << ": run-pass cannot be used with "
-               << TPC.getLimitedCodeGenPipelineReason(" and ") << ".\n";
+        WithColor::warning(errs(), argv[0])
+            << "run-pass cannot be used with "
+            << TPC.getLimitedCodeGenPipelineReason(" and ") << ".\n";
         return 1;
       }
 
@@ -560,8 +571,9 @@ static int compileModule(char **argv, LLVMContext &Context) {
     } else if (Target->addPassesToEmitFile(PM, *OS,
                                            DwoOut ? &DwoOut->os() : nullptr,
                                            FileType, NoVerify, MMI)) {
-      errs() << argv0 << ": target does not support generation of this"
-             << " file type!\n";
+      WithColor::warning(errs(), argv[0])
+          << "target does not support generation of this"
+          << " file type!\n";
       return 1;
     }
 

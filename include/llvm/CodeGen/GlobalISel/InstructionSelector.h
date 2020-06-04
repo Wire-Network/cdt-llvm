@@ -1,9 +1,8 @@
 //===- llvm/CodeGen/GlobalISel/InstructionSelector.h ------------*- C++ -*-===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
@@ -139,6 +138,16 @@ enum {
   /// - MMOIdx - MMO index
   /// - Size - The size in bytes of the memory access
   GIM_CheckMemorySizeEqualTo,
+
+  /// Check the address space of the memory access for the given machine memory
+  /// operand.
+  /// - InsnID - Instruction ID
+  /// - MMOIdx - MMO index
+  /// - NumAddrSpace - Number of valid address spaces
+  /// - AddrSpaceN - An allowed space of the memory access
+  /// - AddrSpaceN+1 ...
+  GIM_CheckMemoryAddressSpace,
+
   /// Check the size of the memory access for the given machine memory operand
   /// against the size of an operand.
   /// - InsnID - Instruction ID
@@ -147,6 +156,10 @@ enum {
   GIM_CheckMemorySizeEqualToLLT,
   GIM_CheckMemorySizeLessThanLLT,
   GIM_CheckMemorySizeGreaterThanLLT,
+  /// Check a generic C++ instruction predicate
+  /// - InsnID - Instruction ID
+  /// - PredicateID - The ID of the predicate function to call
+  GIM_CheckCxxInsnPredicate,
 
   /// Check the type for the specified operand
   /// - InsnID - Instruction ID
@@ -413,13 +426,20 @@ protected:
   }
 
   virtual bool testImmPredicate_I64(unsigned, int64_t) const {
-    llvm_unreachable("Subclasses must override this to use tablegen");
+    llvm_unreachable(
+        "Subclasses must override this with a tablegen-erated function");
   }
   virtual bool testImmPredicate_APInt(unsigned, const APInt &) const {
-    llvm_unreachable("Subclasses must override this to use tablegen");
+    llvm_unreachable(
+        "Subclasses must override this with a tablegen-erated function");
   }
   virtual bool testImmPredicate_APFloat(unsigned, const APFloat &) const {
-    llvm_unreachable("Subclasses must override this to use tablegen");
+    llvm_unreachable(
+        "Subclasses must override this with a tablegen-erated function");
+  }
+  virtual bool testMIPredicate_MI(unsigned, const MachineInstr &) const {
+    llvm_unreachable(
+        "Subclasses must override this with a tablegen-erated function");
   }
 
   /// Constrain a register operand of an instruction \p I to a specified

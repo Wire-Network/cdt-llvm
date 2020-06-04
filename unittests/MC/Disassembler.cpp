@@ -1,9 +1,8 @@
 //===- llvm/unittest/Object/Disassembler.cpp ------------------------------===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 
@@ -72,8 +71,8 @@ TEST(Disassembler, WebAssemblyTest) {
   uint8_t *BytesP = Bytes;
   const char OutStringSize = 100;
   char OutString[OutStringSize];
-  LLVMDisasmContextRef DCR = LLVMCreateDisasm(
-      "wasm32-unknown-unknown-elf", nullptr, 0, nullptr, symbolLookupCallback);
+  LLVMDisasmContextRef DCR = LLVMCreateDisasm("wasm32-unknown-unknown", nullptr,
+                                              0, nullptr, symbolLookupCallback);
   if (!DCR)
     return;
 
@@ -84,7 +83,7 @@ TEST(Disassembler, WebAssemblyTest) {
   InstSize = LLVMDisasmInstruction(DCR, BytesP, NumBytes, PC, OutString,
                                    OutStringSize);
   EXPECT_EQ(InstSize, 1U);
-  EXPECT_EQ(StringRef(OutString), "\ti32.add \t$0=, $0, $0");
+  EXPECT_EQ(StringRef(OutString), "\ti32.add ");
   PC += InstSize;
   BytesP += InstSize;
   NumBytes -= InstSize;
@@ -92,7 +91,7 @@ TEST(Disassembler, WebAssemblyTest) {
   InstSize = LLVMDisasmInstruction(DCR, BytesP, NumBytes, PC, OutString,
                                    OutStringSize);
   EXPECT_EQ(InstSize, 2U);
-  EXPECT_EQ(StringRef(OutString), "\ti64.const\t$0=, -1");
+  EXPECT_EQ(StringRef(OutString), "\ti64.const\t-1");
 
   PC += InstSize;
   BytesP += InstSize;
@@ -101,7 +100,7 @@ TEST(Disassembler, WebAssemblyTest) {
   InstSize = LLVMDisasmInstruction(DCR, BytesP, NumBytes, PC, OutString,
                                    OutStringSize);
   EXPECT_EQ(InstSize, 3U);
-  EXPECT_EQ(StringRef(OutString), "\ti64.load32_u\t$0=, 16($0):p2align=1");
+  EXPECT_EQ(StringRef(OutString), "\ti64.load32_u\t16:p2align=1");
 
   LLVMDisasmDispose(DCR);
 }

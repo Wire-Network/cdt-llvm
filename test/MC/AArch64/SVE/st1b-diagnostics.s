@@ -44,26 +44,36 @@ st1b z27.d, p1, [x12, #8, MUL VL]
 // CHECK-NOT: [[@LINE-1]]:{{[0-9]+}}:
 
 // --------------------------------------------------------------------------//
-// Restricted predicate has range [0, 7].
+// Invalid predicate
 
 st1b z12.b, p8, [x27, #6, MUL VL]
-// CHECK: [[@LINE-1]]:{{[0-9]+}}: error: restricted predicate has range [0, 7].
+// CHECK: [[@LINE-1]]:{{[0-9]+}}: error: invalid restricted predicate register, expected p0..p7 (without element suffix)
 // CHECK-NEXT: st1b z12.b, p8, [x27, #6, MUL VL]
 // CHECK-NOT: [[@LINE-1]]:{{[0-9]+}}:
 
 st1b z23.h, p8, [x20, #1, MUL VL]
-// CHECK: [[@LINE-1]]:{{[0-9]+}}: error: restricted predicate has range [0, 7].
+// CHECK: [[@LINE-1]]:{{[0-9]+}}: error: invalid restricted predicate register, expected p0..p7 (without element suffix)
 // CHECK-NEXT: st1b z23.h, p8, [x20, #1, MUL VL]
 // CHECK-NOT: [[@LINE-1]]:{{[0-9]+}}:
 
 st1b z6.s, p8, [x0, #8, MUL VL]
-// CHECK: [[@LINE-1]]:{{[0-9]+}}: error: restricted predicate has range [0, 7].
+// CHECK: [[@LINE-1]]:{{[0-9]+}}: error: invalid restricted predicate register, expected p0..p7 (without element suffix)
 // CHECK-NEXT: st1b z6.s, p8, [x0, #8, MUL VL]
 // CHECK-NOT: [[@LINE-1]]:{{[0-9]+}}:
 
 st1b z14.d, p8, [x6, #5, MUL VL]
-// CHECK: [[@LINE-1]]:{{[0-9]+}}: error: restricted predicate has range [0, 7].
+// CHECK: [[@LINE-1]]:{{[0-9]+}}: error: invalid restricted predicate register, expected p0..p7 (without element suffix)
 // CHECK-NEXT: st1b z14.d, p8, [x6, #5, MUL VL]
+// CHECK-NOT: [[@LINE-1]]:{{[0-9]+}}:
+
+st1b z14.d, p7.b, [x6, #5, MUL VL]
+// CHECK: [[@LINE-1]]:{{[0-9]+}}: error: invalid restricted predicate register, expected p0..p7 (without element suffix)
+// CHECK-NEXT: st1b z14.d, p7.b, [x6, #5, MUL VL]
+// CHECK-NOT: [[@LINE-1]]:{{[0-9]+}}:
+
+st1b z14.d, p7.q, [x6, #5, MUL VL]
+// CHECK: [[@LINE-1]]:{{[0-9]+}}: error: invalid restricted predicate register, expected p0..p7 (without element suffix)
+// CHECK-NEXT: st1b z14.d, p7.q, [x6, #5, MUL VL]
 // CHECK-NOT: [[@LINE-1]]:{{[0-9]+}}:
 
 // --------------------------------------------------------------------------//
@@ -174,4 +184,20 @@ st1b z0.d, p0, [z0.d, #-1]
 st1b z0.d, p0, [z0.d, #32]
 // CHECK: [[@LINE-1]]:{{[0-9]+}}: error: immediate must be an integer in range [0, 31].
 // CHECK-NEXT: st1b z0.d, p0, [z0.d, #32]
+// CHECK-NOT: [[@LINE-1]]:{{[0-9]+}}:
+
+
+// --------------------------------------------------------------------------//
+// Negative tests for instructions that are incompatible with movprfx
+
+movprfx z31.d, p7/z, z6.d
+st1b    { z31.d }, p7, [z31.d, #31]
+// CHECK: [[@LINE-1]]:{{[0-9]+}}: error: instruction is unpredictable when following a movprfx, suggest replacing movprfx with mov
+// CHECK-NEXT: st1b    { z31.d }, p7, [z31.d, #31]
+// CHECK-NOT: [[@LINE-1]]:{{[0-9]+}}:
+
+movprfx z31, z6
+st1b    { z31.d }, p7, [z31.d, #31]
+// CHECK: [[@LINE-1]]:{{[0-9]+}}: error: instruction is unpredictable when following a movprfx, suggest replacing movprfx with mov
+// CHECK-NEXT: st1b    { z31.d }, p7, [z31.d, #31]
 // CHECK-NOT: [[@LINE-1]]:{{[0-9]+}}:

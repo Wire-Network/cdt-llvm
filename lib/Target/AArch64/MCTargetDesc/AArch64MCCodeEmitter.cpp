@@ -1,9 +1,8 @@
 //=- AArch64/AArch64MCCodeEmitter.cpp - Convert AArch64 code to machine code-=//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
@@ -166,6 +165,9 @@ public:
   uint32_t getImm8OptLsl(const MCInst &MI, unsigned OpIdx,
                          SmallVectorImpl<MCFixup> &Fixups,
                          const MCSubtargetInfo &STI) const;
+  uint32_t getSVEIncDecImm(const MCInst &MI, unsigned OpIdx,
+                           SmallVectorImpl<MCFixup> &Fixups,
+                           const MCSubtargetInfo &STI) const;
 
   unsigned fixMOVZ(const MCInst &MI, unsigned EncodedValue,
                    const MCSubtargetInfo &STI) const;
@@ -185,9 +187,10 @@ public:
                                      const MCSubtargetInfo &STI) const;
 
 private:
-  uint64_t computeAvailableFeatures(const FeatureBitset &FB) const;
-  void verifyInstructionPredicates(const MCInst &MI,
-                                   uint64_t AvailableFeatures) const;
+  FeatureBitset computeAvailableFeatures(const FeatureBitset &FB) const;
+  void
+  verifyInstructionPredicates(const MCInst &MI,
+                              const FeatureBitset &AvailableFeatures) const;
 };
 
 } // end anonymous namespace
@@ -529,6 +532,16 @@ AArch64MCCodeEmitter::getImm8OptLsl(const MCInst &MI, unsigned OpIdx,
   // Test immediate
   auto Immediate = MI.getOperand(OpIdx).getImm();
   return (Immediate & 0xff) | (ShiftVal == 0 ? 0 : (1 << ShiftVal));
+}
+
+uint32_t
+AArch64MCCodeEmitter::getSVEIncDecImm(const MCInst &MI, unsigned OpIdx,
+                                           SmallVectorImpl<MCFixup> &Fixups,
+                                           const MCSubtargetInfo &STI) const {
+  const MCOperand &MO = MI.getOperand(OpIdx);
+  assert(MO.isImm() && "Expected an immediate value!");
+  // Normalize 1-16 range to 0-15.
+  return MO.getImm() - 1;
 }
 
 /// getMoveVecShifterOpValue - Return the encoded value for the vector move

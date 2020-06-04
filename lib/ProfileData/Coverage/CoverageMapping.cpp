@@ -1,9 +1,8 @@
 //===- CoverageMapping.cpp - Code coverage mapping support ----------------===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
@@ -83,7 +82,7 @@ Counter CounterExpressionBuilder::simplify(Counter ExpressionTree) {
     return Counter::getZero();
 
   // Group the terms by counter ID.
-  llvm::sort(Terms.begin(), Terms.end(), [](const Term &LHS, const Term &RHS) {
+  llvm::sort(Terms, [](const Term &LHS, const Term &RHS) {
     return LHS.CounterID < RHS.CounterID;
   });
 
@@ -207,12 +206,6 @@ Error CoverageMapping::loadFunctionRecord(
   else
     OrigFuncName = getFuncNameWithoutPrefix(OrigFuncName, Record.Filenames[0]);
 
-  // Don't load records for (filenames, function) pairs we've already seen.
-  auto FilenamesHash = hash_combine_range(Record.Filenames.begin(),
-                                          Record.Filenames.end());
-  if (!RecordProvenance[FilenamesHash].insert(hash_value(OrigFuncName)).second)
-    return Error::success();
-
   CounterMappingContext Ctx(Record.Expressions);
 
   std::vector<uint64_t> Counts;
@@ -230,6 +223,15 @@ Error CoverageMapping::loadFunctionRecord(
 
   assert(!Record.MappingRegions.empty() && "Function has no regions");
 
+  // This coverage record is a zero region for a function that's unused in
+  // some TU, but used in a different TU. Ignore it. The coverage maps from the
+  // the other TU will either be loaded (providing full region counts) or they
+  // won't (in which case we don't unintuitively report functions as uncovered
+  // when they have non-zero counts in the profile).
+  if (Record.MappingRegions.size() == 1 &&
+      Record.MappingRegions[0].Count.isZero() && Counts[0] > 0)
+    return Error::success();
+
   FunctionRecord Function(OrigFuncName, Record.Filenames);
   for (const auto &Region : Record.MappingRegions) {
     Expected<int64_t> ExecutionCount = Ctx.evaluate(Region.Count);
@@ -239,11 +241,12 @@ Error CoverageMapping::loadFunctionRecord(
     }
     Function.pushRegion(Region, *ExecutionCount);
   }
-  if (Function.CountedRegions.size() != Record.MappingRegions.size()) {
-    FuncCounterMismatches.emplace_back(Record.FunctionName,
-                                       Function.CountedRegions.size());
+
+  // Don't create records for (filenames, function) pairs we've already seen.
+  auto FilenamesHash = hash_combine_range(Record.Filenames.begin(),
+                                          Record.Filenames.end());
+  if (!RecordProvenance[FilenamesHash].insert(hash_value(OrigFuncName)).second)
     return Error::success();
-  }
 
   Functions.push_back(std::move(Function));
   return Error::success();
@@ -282,11 +285,14 @@ CoverageMapping::load(ArrayRef<StringRef> ObjectFilenames,
     if (std::error_code EC = CovMappingBufOrErr.getError())
       return errorCodeToError(EC);
     StringRef Arch = Arches.empty() ? StringRef() : Arches[File.index()];
-    auto CoverageReaderOrErr =
-        BinaryCoverageReader::create(CovMappingBufOrErr.get(), Arch);
-    if (Error E = CoverageReaderOrErr.takeError())
+    MemoryBufferRef CovMappingBufRef =
+        CovMappingBufOrErr.get()->getMemBufferRef();
+    auto CoverageReadersOrErr =
+        BinaryCoverageReader::create(CovMappingBufRef, Arch, Buffers);
+    if (Error E = CoverageReadersOrErr.takeError())
       return std::move(E);
-    Readers.push_back(std::move(CoverageReaderOrErr.get()));
+    for (auto &Reader : CoverageReadersOrErr.get())
+      Readers.push_back(std::move(Reader));
     Buffers.push_back(std::move(CovMappingBufOrErr.get()));
   }
   return load(Readers, *ProfileReader);
@@ -459,8 +465,7 @@ class SegmentBuilder {
 
   /// Sort a nested sequence of regions from a single file.
   static void sortNestedRegions(MutableArrayRef<CountedRegion> Regions) {
-    llvm::sort(Regions.begin(), Regions.end(), [](const CountedRegion &LHS,
-                                                  const CountedRegion &RHS) {
+    llvm::sort(Regions, [](const CountedRegion &LHS, const CountedRegion &RHS) {
       if (LHS.startLoc() != RHS.startLoc())
         return LHS.startLoc() < RHS.startLoc();
       if (LHS.endLoc() != RHS.endLoc())
@@ -557,7 +562,7 @@ std::vector<StringRef> CoverageMapping::getUniqueSourceFiles() const {
   for (const auto &Function : getCoveredFunctions())
     Filenames.insert(Filenames.end(), Function.Filenames.begin(),
                      Function.Filenames.end());
-  llvm::sort(Filenames.begin(), Filenames.end());
+  llvm::sort(Filenames);
   auto Last = std::unique(Filenames.begin(), Filenames.end());
   Filenames.erase(Last, Filenames.end());
   return Filenames;

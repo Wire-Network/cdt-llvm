@@ -1,9 +1,8 @@
 //===- HexagonFrameLowering.cpp - Define frame lowering -------------------===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //
 //===----------------------------------------------------------------------===//
@@ -375,17 +374,17 @@ static bool isRestoreCall(unsigned Opc) {
 }
 
 static inline bool isOptNone(const MachineFunction &MF) {
-    return MF.getFunction().hasFnAttribute(Attribute::OptimizeNone) ||
+    return MF.getFunction().hasOptNone() ||
            MF.getTarget().getOptLevel() == CodeGenOpt::None;
 }
 
 static inline bool isOptSize(const MachineFunction &MF) {
     const Function &F = MF.getFunction();
-    return F.optForSize() && !F.optForMinSize();
+    return F.hasOptSize() && !F.hasMinSize();
 }
 
 static inline bool isMinSize(const MachineFunction &MF) {
-    return MF.getFunction().optForMinSize();
+    return MF.getFunction().hasMinSize();
 }
 
 /// Implements shrink-wrapping of the stack frame. By default, stack frame
@@ -548,6 +547,37 @@ void HexagonFrameLowering::emitPrologue(MachineFunction &MF,
     BitVector DoneT(MaxBN+1), DoneF(MaxBN+1), Path(MaxBN+1);
     updateExitPaths(*EpilogB, *EpilogB, DoneT, DoneF, Path);
   }
+}
+
+/// Returns true if the target can safely skip saving callee-saved registers
+/// for noreturn nounwind functions.
+bool HexagonFrameLowering::enableCalleeSaveSkip(
+    const MachineFunction &MF) const {
+  const auto &F = MF.getFunction();
+  assert(F.hasFnAttribute(Attribute::NoReturn) &&
+         F.getFunction().hasFnAttribute(Attribute::NoUnwind) &&
+         !F.getFunction().hasFnAttribute(Attribute::UWTable));
+  (void)F;
+
+  // No need to save callee saved registers if the function does not return.
+  return MF.getSubtarget<HexagonSubtarget>().noreturnStackElim();
+}
+
+// Helper function used to determine when to eliminate the stack frame for
+// functions marked as noreturn and when the noreturn-stack-elim options are
+// specified. When both these conditions are true, then a FP may not be needed
+// if the function makes a call. It is very similar to enableCalleeSaveSkip,
+// but it used to check if the allocframe can be eliminated as well.
+static bool enableAllocFrameElim(const MachineFunction &MF) {
+  const auto &F = MF.getFunction();
+  const auto &MFI = MF.getFrameInfo();
+  const auto &HST = MF.getSubtarget<HexagonSubtarget>();
+  assert(!MFI.hasVarSizedObjects() &&
+         !HST.getRegisterInfo()->needsStackRealignment(MF));
+  return F.hasFnAttribute(Attribute::NoReturn) &&
+    F.hasFnAttribute(Attribute::NoUnwind) &&
+    !F.hasFnAttribute(Attribute::UWTable) && HST.noreturnStackElim() &&
+    MFI.getStackSize() == 0;
 }
 
 void HexagonFrameLowering::insertPrologueInBlock(MachineBasicBlock &MBB,
@@ -994,7 +1024,7 @@ bool HexagonFrameLowering::hasFP(const MachineFunction &MF) const {
   }
 
   const auto &HMFI = *MF.getInfo<HexagonMachineFunctionInfo>();
-  if (MFI.hasCalls() || HMFI.hasClobberLR())
+  if ((MFI.hasCalls() && !enableAllocFrameElim(MF)) || HMFI.hasClobberLR())
     return true;
 
   return false;
@@ -1266,7 +1296,7 @@ bool HexagonFrameLowering::insertCSRRestoresInBlock(MachineBasicBlock &MBB,
 
     // Call spill function.
     DebugLoc DL = MI != MBB.end() ? MI->getDebugLoc()
-                                  : MBB.getLastNonDebugInstr()->getDebugLoc();
+                                  : MBB.findDebugLoc(MBB.end());
     MachineInstr *DeallocCall = nullptr;
 
     if (HasTC) {
@@ -1579,10 +1609,10 @@ bool HexagonFrameLowering::expandStoreInt(MachineBasicBlock &B,
 
   // S2_storeri_io FI, 0, TmpR
   BuildMI(B, It, DL, HII.get(Hexagon::S2_storeri_io))
-    .addFrameIndex(FI)
-    .addImm(0)
-    .addReg(TmpR, RegState::Kill)
-    .setMemRefs(MI->memoperands_begin(), MI->memoperands_end());
+      .addFrameIndex(FI)
+      .addImm(0)
+      .addReg(TmpR, RegState::Kill)
+      .cloneMemRefs(*MI);
 
   NewRegs.push_back(TmpR);
   B.erase(It);
@@ -1604,9 +1634,9 @@ bool HexagonFrameLowering::expandLoadInt(MachineBasicBlock &B,
   // TmpR = L2_loadri_io FI, 0
   unsigned TmpR = MRI.createVirtualRegister(&Hexagon::IntRegsRegClass);
   BuildMI(B, It, DL, HII.get(Hexagon::L2_loadri_io), TmpR)
-    .addFrameIndex(FI)
-    .addImm(0)
-    .setMemRefs(MI->memoperands_begin(), MI->memoperands_end());
+      .addFrameIndex(FI)
+      .addImm(0)
+      .cloneMemRefs(*MI);
 
   // DstR = C2_tfrrp TmpR   if DstR is a predicate register
   // DstR = A2_tfrrcr TmpR  if DstR is a modifier register
@@ -1708,7 +1738,7 @@ bool HexagonFrameLowering::expandStoreVec2(MachineBasicBlock &B,
   // register that is entirely undefined.
   LivePhysRegs LPR(HRI);
   LPR.addLiveIns(B);
-  SmallVector<std::pair<unsigned, const MachineOperand*>,2> Clobbers;
+  SmallVector<std::pair<MCPhysReg, const MachineOperand*>,2> Clobbers;
   for (auto R = B.begin(); R != It; ++R) {
     Clobbers.clear();
     LPR.stepForward(*R, Clobbers);
@@ -1731,10 +1761,10 @@ bool HexagonFrameLowering::expandStoreVec2(MachineBasicBlock &B,
     StoreOpc = NeedAlign <= HasAlign ? Hexagon::V6_vS32b_ai
                                      : Hexagon::V6_vS32Ub_ai;
     BuildMI(B, It, DL, HII.get(StoreOpc))
-      .addFrameIndex(FI)
-      .addImm(0)
-      .addReg(SrcLo, getKillRegState(IsKill))
-      .setMemRefs(MI->memoperands_begin(), MI->memoperands_end());
+        .addFrameIndex(FI)
+        .addImm(0)
+        .addReg(SrcLo, getKillRegState(IsKill))
+        .cloneMemRefs(*MI);
   }
 
   // Store high part.
@@ -1742,10 +1772,10 @@ bool HexagonFrameLowering::expandStoreVec2(MachineBasicBlock &B,
     StoreOpc = NeedAlign <= MinAlign(HasAlign, Size) ? Hexagon::V6_vS32b_ai
                                                      : Hexagon::V6_vS32Ub_ai;
     BuildMI(B, It, DL, HII.get(StoreOpc))
-      .addFrameIndex(FI)
-      .addImm(Size)
-      .addReg(SrcHi, getKillRegState(IsKill))
-      .setMemRefs(MI->memoperands_begin(), MI->memoperands_end());
+        .addFrameIndex(FI)
+        .addImm(Size)
+        .addReg(SrcHi, getKillRegState(IsKill))
+        .cloneMemRefs(*MI);
   }
 
   B.erase(It);
@@ -1777,17 +1807,17 @@ bool HexagonFrameLowering::expandLoadVec2(MachineBasicBlock &B,
   LoadOpc = NeedAlign <= HasAlign ? Hexagon::V6_vL32b_ai
                                   : Hexagon::V6_vL32Ub_ai;
   BuildMI(B, It, DL, HII.get(LoadOpc), DstLo)
-    .addFrameIndex(FI)
-    .addImm(0)
-    .setMemRefs(MI->memoperands_begin(), MI->memoperands_end());
+      .addFrameIndex(FI)
+      .addImm(0)
+      .cloneMemRefs(*MI);
 
   // Load high part.
   LoadOpc = NeedAlign <= MinAlign(HasAlign, Size) ? Hexagon::V6_vL32b_ai
                                                   : Hexagon::V6_vL32Ub_ai;
   BuildMI(B, It, DL, HII.get(LoadOpc), DstHi)
-    .addFrameIndex(FI)
-    .addImm(Size)
-    .setMemRefs(MI->memoperands_begin(), MI->memoperands_end());
+      .addFrameIndex(FI)
+      .addImm(Size)
+      .cloneMemRefs(*MI);
 
   B.erase(It);
   return true;
@@ -1813,10 +1843,10 @@ bool HexagonFrameLowering::expandStoreVec(MachineBasicBlock &B,
   unsigned StoreOpc = NeedAlign <= HasAlign ? Hexagon::V6_vS32b_ai
                                             : Hexagon::V6_vS32Ub_ai;
   BuildMI(B, It, DL, HII.get(StoreOpc))
-    .addFrameIndex(FI)
-    .addImm(0)
-    .addReg(SrcR, getKillRegState(IsKill))
-    .setMemRefs(MI->memoperands_begin(), MI->memoperands_end());
+      .addFrameIndex(FI)
+      .addImm(0)
+      .addReg(SrcR, getKillRegState(IsKill))
+      .cloneMemRefs(*MI);
 
   B.erase(It);
   return true;
@@ -1841,9 +1871,9 @@ bool HexagonFrameLowering::expandLoadVec(MachineBasicBlock &B,
   unsigned LoadOpc = NeedAlign <= HasAlign ? Hexagon::V6_vL32b_ai
                                            : Hexagon::V6_vL32Ub_ai;
   BuildMI(B, It, DL, HII.get(LoadOpc), DstR)
-    .addFrameIndex(FI)
-    .addImm(0)
-    .setMemRefs(MI->memoperands_begin(), MI->memoperands_end());
+      .addFrameIndex(FI)
+      .addImm(0)
+      .cloneMemRefs(*MI);
 
   B.erase(It);
   return true;
@@ -2071,7 +2101,7 @@ void HexagonFrameLowering::optimizeSpillSlots(MachineFunction &MF,
         }
         if (!Bad) {
           for (auto *Mo : In.memoperands()) {
-            if (!Mo->isVolatile())
+            if (!Mo->isVolatile() && !Mo->isAtomic())
               continue;
             Bad = true;
             break;

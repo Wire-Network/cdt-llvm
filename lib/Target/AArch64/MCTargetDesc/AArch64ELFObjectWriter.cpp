@@ -1,9 +1,8 @@
 //===-- AArch64ELFObjectWriter.cpp - AArch64 ELF Writer -------------------===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
@@ -138,7 +137,9 @@ unsigned AArch64ELFObjectWriter::getRelocType(MCContext &Ctx,
       } else
         return ELF::R_AARCH64_PREL64;
     case AArch64::fixup_aarch64_pcrel_adr_imm21:
-      assert(SymLoc == AArch64MCExpr::VK_NONE && "unexpected ADR relocation");
+      if (SymLoc != AArch64MCExpr::VK_ABS)
+        Ctx.reportError(Fixup.getLoc(),
+                        "invalid symbol kind for ADR relocation");
       return R_CLS(ADR_PREL_LO21);
     case AArch64::fixup_aarch64_pcrel_adrp_imm21:
       if (SymLoc == AArch64MCExpr::VK_ABS && !IsNC)
@@ -169,6 +170,8 @@ unsigned AArch64ELFObjectWriter::getRelocType(MCContext &Ctx,
     case AArch64::fixup_aarch64_ldr_pcrel_imm19:
       if (SymLoc == AArch64MCExpr::VK_GOTTPREL)
         return R_CLS(TLSIE_LD_GOTTPREL_PREL19);
+      if (SymLoc == AArch64MCExpr::VK_GOT)
+        return R_CLS(GOT_LD_PREL19);
       return R_CLS(LD_PREL_LO19);
     case AArch64::fixup_aarch64_pcrel_branch14:
       return R_CLS(TSTBR14);
@@ -182,6 +185,8 @@ unsigned AArch64ELFObjectWriter::getRelocType(MCContext &Ctx,
     if (IsILP32 && isNonILP32reloc(Fixup, RefKind, Ctx))
       return ELF::R_AARCH64_NONE;
     switch ((unsigned)Fixup.getKind()) {
+    case FK_NONE:
+      return ELF::R_AARCH64_NONE;
     case FK_Data_1:
       Ctx.reportError(Fixup.getLoc(), "1-byte data relocations not supported");
       return ELF::R_AARCH64_NONE;

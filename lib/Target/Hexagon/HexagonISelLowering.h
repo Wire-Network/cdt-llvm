@@ -1,9 +1,8 @@
 //===-- HexagonISelLowering.h - Hexagon DAG Lowering Interface --*- C++ -*-===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
@@ -101,7 +100,6 @@ namespace HexagonISD {
 
     bool CanReturnSmallStruct(const Function* CalleeFn, unsigned& RetSize)
         const;
-    void promoteLdStType(MVT VT, MVT PromotedLdStVT);
 
   public:
     explicit HexagonTargetLowering(const TargetMachine &TM,
@@ -142,10 +140,12 @@ namespace HexagonISD {
         unsigned DefinedValues) const override;
 
     bool isShuffleMaskLegal(ArrayRef<int> Mask, EVT VT) const override;
-    TargetLoweringBase::LegalizeTypeAction getPreferredVectorAction(EVT VT)
+    TargetLoweringBase::LegalizeTypeAction getPreferredVectorAction(MVT VT)
         const override;
 
     SDValue LowerOperation(SDValue Op, SelectionDAG &DAG) const override;
+    void LowerOperationWrapper(SDNode *N, SmallVectorImpl<SDValue> &Results,
+                               SelectionDAG &DAG) const override;
     void ReplaceNodeResults(SDNode *N, SmallVectorImpl<SDValue> &Results,
                             SelectionDAG &DAG) const override;
 
@@ -164,7 +164,10 @@ namespace HexagonISD {
     SDValue LowerANY_EXTEND(SDValue Op, SelectionDAG &DAG) const;
     SDValue LowerSIGN_EXTEND(SDValue Op, SelectionDAG &DAG) const;
     SDValue LowerZERO_EXTEND(SDValue Op, SelectionDAG &DAG) const;
+    SDValue LowerLoad(SDValue Op, SelectionDAG &DAG) const;
+    SDValue LowerStore(SDValue Op, SelectionDAG &DAG) const;
     SDValue LowerUnalignedLoad(SDValue Op, SelectionDAG &DAG) const;
+    SDValue LowerUAddSubO(SDValue Op, SelectionDAG &DAG) const;
     SDValue LowerAddSubCarry(SDValue Op, SelectionDAG &DAG) const;
 
     SDValue LowerDYNAMIC_STACKALLOC(SDValue Op, SelectionDAG &DAG) const;
@@ -219,6 +222,9 @@ namespace HexagonISD {
                         const SDLoc &dl, SelectionDAG &DAG) const override;
 
     bool mayBeEmittedAsTailCall(const CallInst *CI) const override;
+
+    unsigned getRegisterByName(const char* RegName, EVT VT,
+                               SelectionDAG &DAG) const override;
 
     /// If a physical register, this returns the register that receives the
     /// exception address on entry to an EH pad.
@@ -279,7 +285,8 @@ namespace HexagonISD {
     /// is legal.  It is frequently not legal in PIC relocation models.
     bool isOffsetFoldingLegal(const GlobalAddressSDNode *GA) const override;
 
-    bool isFPImmLegal(const APFloat &Imm, EVT VT) const override;
+    bool isFPImmLegal(const APFloat &Imm, EVT VT,
+                      bool ForCodeSize) const override;
 
     /// isLegalICmpImmediate - Return true if the specified immediate is legal
     /// icmp immediate, that is the target has icmp instructions which can
@@ -289,14 +296,17 @@ namespace HexagonISD {
 
     EVT getOptimalMemOpType(uint64_t Size, unsigned DstAlign,
         unsigned SrcAlign, bool IsMemset, bool ZeroMemset, bool MemcpyStrSrc,
-        MachineFunction &MF) const override;
+        const AttributeList &FuncAttributes) const override;
 
     bool allowsMisalignedMemoryAccesses(EVT VT, unsigned AddrSpace,
-        unsigned Align, bool *Fast) const override;
+        unsigned Align, MachineMemOperand::Flags Flags, bool *Fast) const override;
 
     /// Returns relocation base for the given PIC jumptable.
     SDValue getPICJumpTableRelocBase(SDValue Table, SelectionDAG &DAG)
                                      const override;
+
+    bool shouldReduceLoadWidth(SDNode *Load, ISD::LoadExtType ExtTy,
+                               EVT NewVT) const override;
 
     // Handling of atomic RMW instructions.
     Value *emitLoadLinked(IRBuilder<> &Builder, Value *Addr,
@@ -305,7 +315,8 @@ namespace HexagonISD {
         Value *Addr, AtomicOrdering Ord) const override;
     AtomicExpansionKind shouldExpandAtomicLoadInIR(LoadInst *LI) const override;
     bool shouldExpandAtomicStoreInIR(StoreInst *SI) const override;
-    bool shouldExpandAtomicCmpXchgInIR(AtomicCmpXchgInst *AI) const override;
+    AtomicExpansionKind
+    shouldExpandAtomicCmpXchgInIR(AtomicCmpXchgInst *AI) const override;
 
     AtomicExpansionKind
     shouldExpandAtomicRMWInIR(AtomicRMWInst *AI) const override {
@@ -314,6 +325,9 @@ namespace HexagonISD {
 
   private:
     void initializeHVXLowering();
+    void validateConstPtrAlignment(SDValue Ptr, const SDLoc &dl,
+                                   unsigned NeedAlign) const;
+
     std::pair<SDValue,int> getBaseAndOffset(SDValue Addr) const;
 
     bool getBuildVectorConstInts(ArrayRef<SDValue> Values, MVT VecTy,

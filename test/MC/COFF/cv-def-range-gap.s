@@ -1,4 +1,4 @@
-# RUN: llvm-mc -triple=x86_64-pc-win32 -filetype=obj < %s | llvm-readobj -codeview | FileCheck %s
+# RUN: llvm-mc -triple=x86_64-pc-win32 -filetype=obj < %s | llvm-readobj --codeview | FileCheck %s
 
 # This tries to test defrange gap edge cases.
 
@@ -9,7 +9,7 @@
 # CHECK-NOT:     LocalSym {
 # CHECK:         DefRangeRegisterSym {
 # CHECK-NEXT:      Kind: S_DEFRANGE_REGISTER (0x1141)
-# CHECK-NEXT:      Register: CVRegESI (0x17)
+# CHECK-NEXT:      Register: ESI (0x17)
 # CHECK-NEXT:      MayHaveNoName: 0
 # CHECK-NEXT:      LocalVariableAddrRange {
 # CHECK-NEXT:        OffsetStart: .text+0x5
@@ -23,7 +23,7 @@
 # CHECK-NEXT:    }
 # CHECK-NEXT:    DefRangeRegisterSym {
 # CHECK-NEXT:      Kind: S_DEFRANGE_REGISTER (0x1141)
-# CHECK-NEXT:      Register: CVRegESI (0x17)
+# CHECK-NEXT:      Register: ESI (0x17)
 # CHECK-NEXT:      MayHaveNoName: 0
 # CHECK-NEXT:      LocalVariableAddrRange {
 # CHECK-NEXT:        OffsetStart: .text+0x10015
@@ -33,7 +33,7 @@
 # CHECK-NEXT:    }
 # CHECK-NEXT:    DefRangeRegisterSym {
 # CHECK-NEXT:      Kind: S_DEFRANGE_REGISTER (0x1141)
-# CHECK-NEXT:      Register: CVRegESI (0x17)
+# CHECK-NEXT:      Register: ESI (0x17)
 # CHECK-NEXT:      MayHaveNoName: 0
 # CHECK-NEXT:      LocalVariableAddrRange {
 # CHECK-NEXT:        OffsetStart: .text+0x2001B
@@ -43,7 +43,7 @@
 # CHECK-NEXT:    }
 # CHECK-NEXT:    DefRangeRegisterSym {
 # CHECK-NEXT:      Kind: S_DEFRANGE_REGISTER (0x1141)
-# CHECK-NEXT:      Register: CVRegESI (0x17)
+# CHECK-NEXT:      Register: ESI (0x17)
 # CHECK-NEXT:      MayHaveNoName: 0
 # CHECK-NEXT:      LocalVariableAddrRange {
 # CHECK-NEXT:        OffsetStart: .text+0x2001C

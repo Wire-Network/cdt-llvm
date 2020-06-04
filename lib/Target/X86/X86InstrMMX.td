@@ -1,9 +1,8 @@
 //===-- X86InstrMMX.td - Describe the MMX Instruction Set --*- tablegen -*-===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
@@ -47,7 +46,7 @@ let Constraints = "$src1 = $dst" in {
                  !strconcat(OpcodeStr, "\t{$src2, $dst|$dst, $src2}"),
                  [(set VR64:$dst, (IntId VR64:$src1,
                                    (bitconvert (load_mmx addr:$src2))))]>,
-                 Sched<[sched.Folded, ReadAfterLd]>;
+                 Sched<[sched.Folded, sched.ReadAfterFold]>;
   }
 
   multiclass MMXI_binop_rmi_int<bits<8> opc, bits<8> opc2, Format ImmForm,
@@ -64,7 +63,7 @@ let Constraints = "$src1 = $dst" in {
                   !strconcat(OpcodeStr, "\t{$src2, $dst|$dst, $src2}"),
                   [(set VR64:$dst, (IntId VR64:$src1,
                                     (bitconvert (load_mmx addr:$src2))))]>,
-                  Sched<[sched.Folded, ReadAfterLd]>;
+                  Sched<[sched.Folded, sched.ReadAfterFold]>;
     def ri : MMXIi8<opc2, ImmForm, (outs VR64:$dst),
                                    (ins VR64:$src1, i32u8imm:$src2),
                     !strconcat(OpcodeStr, "\t{$src2, $dst|$dst, $src2}"),
@@ -105,7 +104,7 @@ multiclass SS3I_binop_rm_int_mm<bits<8> opc, string OpcodeStr,
        [(set VR64:$dst,
          (IntId64 VR64:$src1,
           (bitconvert (load_mmx addr:$src2))))]>,
-      Sched<[sched.Folded, ReadAfterLd]>;
+      Sched<[sched.Folded, sched.ReadAfterFold]>;
 }
 }
 
@@ -122,7 +121,7 @@ multiclass ssse3_palign_mm<string asm, Intrinsic IntId,
       !strconcat(asm, "\t{$src3, $src2, $dst|$dst, $src2, $src3}"),
       [(set VR64:$dst, (IntId VR64:$src1,
                        (bitconvert (load_mmx addr:$src2)), (i8 imm:$src3)))]>,
-      Sched<[sched.Folded, ReadAfterLd]>;
+      Sched<[sched.Folded, sched.ReadAfterFold]>;
 }
 
 multiclass sse12_cvt_pint<bits<8> opc, RegisterClass SrcRC, RegisterClass DstRC,
@@ -153,7 +152,9 @@ multiclass sse12_cvt_pint_3addr<bits<8> opc, RegisterClass SrcRC,
 // MMX EMMS Instruction
 //===----------------------------------------------------------------------===//
 
-let SchedRW = [WriteEMMS] in
+let SchedRW = [WriteEMMS],
+    Defs = [MM0, MM1, MM2, MM3, MM4, MM5, MM6, MM7,
+            ST0, ST1, ST2, ST3, ST4, ST5, ST6, ST7] in
 def MMX_EMMS  : MMXI<0x77, RawFrm, (outs), (ins), "emms", [(int_x86_mmx_emms)]>;
 
 //===----------------------------------------------------------------------===//
@@ -173,15 +174,12 @@ def MMX_MOVD64rm : MMXI<0x6E, MRMSrcMem, (outs VR64:$dst), (ins i32mem:$src),
                         Sched<[WriteVecLoad]>;
 
 let Predicates = [HasMMX] in {
-  let AddedComplexity = 15 in
-    def : Pat<(x86mmx (MMX_X86movw2d GR32:$src)),
-              (MMX_MOVD64rr GR32:$src)>;
-  let AddedComplexity = 20 in {
-    def : Pat<(x86mmx (MMX_X86movw2d (i32 0))),
-              (MMX_SET0)>;
-    def : Pat<(x86mmx (MMX_X86movw2d (loadi32 addr:$src))),
-              (MMX_MOVD64rm addr:$src)>;
-  }
+  def : Pat<(x86mmx (MMX_X86movw2d GR32:$src)),
+            (MMX_MOVD64rr GR32:$src)>;
+  def : Pat<(x86mmx (MMX_X86movw2d (i32 0))),
+            (MMX_SET0)>;
+  def : Pat<(x86mmx (MMX_X86movw2d (loadi32 addr:$src))),
+            (MMX_MOVD64rm addr:$src)>;
 }
 
 let mayStore = 1 in
@@ -206,9 +204,6 @@ def MMX_MOVD64to64rm : MMXRI<0x6E, MRMSrcMem, (outs VR64:$dst),
                              (ins i64mem:$src), "movq\t{$src, $dst|$dst, $src}",
                              []>, Sched<[SchedWriteVecMoveLS.MMX.RM]>;
 
-// These are 64 bit moves, but since the OS X assembler doesn't
-// recognize a register-register movq, we write them as
-// movd.
 let isBitcast = 1 in {
 def MMX_MOVD64from64rr : MMXRI<0x7E, MRMDestReg,
                                (outs GR64:$dst), (ins VR64:$src),
@@ -224,6 +219,9 @@ def MMX_MOVQ64rr_REV : MMXI<0x7F, MRMDestReg, (outs VR64:$dst), (ins VR64:$src),
                             FoldGenData<"MMX_MOVQ64rr">;
 } // SchedRW, hasSideEffects, isMoveReg
 } // isBitcast
+
+def : InstAlias<"movq.s\t{$src, $dst|$dst, $src}",
+                (MMX_MOVQ64rr_REV VR64:$dst, VR64:$src), 0>;
 
 let isCodeGenOnly = 1, ForceDisassemble = 1, hasSideEffects = 0, mayStore = 1 in
 def MMX_MOVD64from64rm : MMXRI<0x7E, MRMDestMem,
@@ -276,11 +274,9 @@ def MMX_MOVNTQmr  : MMXI<0xE7, MRMDestMem, (outs), (ins i64mem:$dst, VR64:$src),
                          Sched<[SchedWriteVecMoveLSNT.MMX.MR]>;
 
 let Predicates = [HasMMX] in {
-  let AddedComplexity = 15 in
   // movd to MMX register zero-extends
   def : Pat<(x86mmx (X86vzmovl (x86mmx (scalar_to_vector GR32:$src)))),
             (MMX_MOVD64rr GR32:$src)>;
-  let AddedComplexity = 20 in
   def : Pat<(x86mmx (X86vzmovl (x86mmx (scalar_to_vector (loadi32 addr:$src))))),
             (MMX_MOVD64rm addr:$src)>;
 }
@@ -549,7 +545,7 @@ let Predicates = [HasMMX, HasSSE1] in {
                     "pinsrw\t{$src3, $src2, $dst|$dst, $src2, $src3}",
                     [(set VR64:$dst, (int_x86_mmx_pinsr_w VR64:$src1,
                                       GR32orGR64:$src2, imm:$src3))]>,
-                    Sched<[WriteVecInsert]>;
+                    Sched<[WriteVecInsert, ReadDefault, ReadInt2Fpu]>;
 
   def MMX_PINSRWrm : MMXIi8<0xC4, MRMSrcMem,
                    (outs VR64:$dst),
@@ -558,7 +554,7 @@ let Predicates = [HasMMX, HasSSE1] in {
                    [(set VR64:$dst, (int_x86_mmx_pinsr_w VR64:$src1,
                                        (i32 (anyext (loadi16 addr:$src2))),
                                      imm:$src3))]>,
-                   Sched<[WriteVecInsertLd, ReadAfterLd]>;
+                   Sched<[WriteVecInsert.Folded, WriteVecInsert.ReadAfterFold]>;
 }
 }
 

@@ -1,10 +1,9 @@
 //===----------------------- AlignmentFromAssumptions.cpp -----------------===//
 //                  Set Load/Store Alignments From Assumptions
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
@@ -280,7 +279,7 @@ bool AlignmentFromAssumptionsPass::extractAlignmentInfo(CallInst *I,
     return false;
 
   // Sign extend the offset to 64 bits (so that it is like all of the other
-  // expressions). 
+  // expressions).
   unsigned OffSCEVBits = OffSCEV->getType()->getPrimitiveSizeInBits();
   if (OffSCEVBits < 64)
     OffSCEV = SE->getSignExtendExpr(OffSCEV, Int64Ty);

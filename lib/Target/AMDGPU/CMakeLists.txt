@@ -4,10 +4,8 @@ tablegen(LLVM AMDGPUGenAsmMatcher.inc -gen-asm-matcher)
 tablegen(LLVM AMDGPUGenAsmWriter.inc -gen-asm-writer)
 tablegen(LLVM AMDGPUGenCallingConv.inc -gen-callingconv)
 tablegen(LLVM AMDGPUGenDAGISel.inc -gen-dag-isel)
-tablegen(LLVM AMDGPUGenDFAPacketizer.inc -gen-dfa-packetizer)
 tablegen(LLVM AMDGPUGenDisassemblerTables.inc -gen-disassembler)
 tablegen(LLVM AMDGPUGenInstrInfo.inc -gen-instr-info)
-tablegen(LLVM AMDGPUGenIntrinsics.inc -gen-tgt-intrinsic)
 tablegen(LLVM AMDGPUGenMCCodeEmitter.inc -gen-emitter)
 tablegen(LLVM AMDGPUGenMCPseudoLowering.inc -gen-pseudo-lowering)
 tablegen(LLVM AMDGPUGenRegisterBank.inc -gen-register-bank)
@@ -18,6 +16,16 @@ tablegen(LLVM AMDGPUGenSubtargetInfo.inc -gen-subtarget)
 set(LLVM_TARGET_DEFINITIONS AMDGPUGISel.td)
 tablegen(LLVM AMDGPUGenGlobalISel.inc -gen-global-isel)
 
+set(LLVM_TARGET_DEFINITIONS R600.td)
+tablegen(LLVM R600GenAsmWriter.inc -gen-asm-writer)
+tablegen(LLVM R600GenCallingConv.inc -gen-callingconv)
+tablegen(LLVM R600GenDAGISel.inc -gen-dag-isel)
+tablegen(LLVM R600GenDFAPacketizer.inc -gen-dfa-packetizer)
+tablegen(LLVM R600GenInstrInfo.inc -gen-instr-info)
+tablegen(LLVM R600GenMCCodeEmitter.inc -gen-emitter)
+tablegen(LLVM R600GenRegisterInfo.inc -gen-register-info)
+tablegen(LLVM R600GenSubtargetInfo.inc -gen-subtarget)
+
 add_public_tablegen_target(AMDGPUCommonTableGen)
 
 add_llvm_target(AMDGPUCodeGen
@@ -27,18 +35,21 @@ add_llvm_target(AMDGPUCodeGen
   AMDGPUAnnotateUniformValues.cpp
   AMDGPUArgumentUsageInfo.cpp
   AMDGPUAsmPrinter.cpp
+  AMDGPUAtomicOptimizer.cpp
   AMDGPUCallLowering.cpp
   AMDGPUCodeGenPrepare.cpp
+  AMDGPUFixFunctionBitcasts.cpp
   AMDGPUFrameLowering.cpp
+  AMDGPUHSAMetadataStreamer.cpp
   AMDGPUInstrInfo.cpp
   AMDGPUInstructionSelector.cpp
-  AMDGPUIntrinsicInfo.cpp
   AMDGPUISelDAGToDAG.cpp
   AMDGPUISelLowering.cpp
   AMDGPULegalizerInfo.cpp
   AMDGPULibCalls.cpp
   AMDGPULibFunc.cpp
   AMDGPULowerIntrinsics.cpp
+  AMDGPULowerKernelArguments.cpp
   AMDGPULowerKernelAttributes.cpp
   AMDGPUMachineCFGStructurizer.cpp
   AMDGPUMachineFunction.cpp
@@ -47,7 +58,7 @@ add_llvm_target(AMDGPUCodeGen
   AMDGPUMCInstLower.cpp
   AMDGPUOpenCLEnqueuedBlockLowering.cpp
   AMDGPUPromoteAlloca.cpp
-  AMDGPURegAsmNames.inc.cpp
+  AMDGPUPropagateAttributes.cpp
   AMDGPURegisterBankInfo.cpp
   AMDGPURegisterInfo.cpp
   AMDGPURewriteOutArguments.cpp
@@ -79,11 +90,12 @@ add_llvm_target(AMDGPUCodeGen
   R600OptimizeVectorRegisters.cpp
   R600Packetizer.cpp
   R600RegisterInfo.cpp
+  SIAddIMGInit.cpp
   SIAnnotateControlFlow.cpp
-  SIDebuggerInsertNops.cpp
   SIFixSGPRCopies.cpp
+  SIFixupVectorISel.cpp
   SIFixVGPRCopies.cpp
-  SIFixWWMLiveness.cpp
+  SIPreAllocateWWMRegs.cpp
   SIFoldOperands.cpp
   SIFormMemoryClauses.cpp
   SIFrameLowering.cpp
@@ -94,6 +106,7 @@ add_llvm_target(AMDGPUCodeGen
   SILoadStoreOptimizer.cpp
   SILowerControlFlow.cpp
   SILowerI1Copies.cpp
+  SILowerSGPRSpills.cpp
   SIMachineFunctionInfo.cpp
   SIMachineScheduler.cpp
   SIMemoryLegalizer.cpp
@@ -104,11 +117,14 @@ add_llvm_target(AMDGPUCodeGen
   SIShrinkInstructions.cpp
   SIWholeQuadMode.cpp
   GCNILPSched.cpp
+  GCNRegBankReassign.cpp
+  GCNNSAReassign.cpp
+  GCNDPPCombine.cpp
+  SIModeRegister.cpp
   )
 
 add_subdirectory(AsmParser)
 add_subdirectory(Disassembler)
-add_subdirectory(InstPrinter)
 add_subdirectory(MCTargetDesc)
 add_subdirectory(TargetInfo)
 add_subdirectory(Utils)

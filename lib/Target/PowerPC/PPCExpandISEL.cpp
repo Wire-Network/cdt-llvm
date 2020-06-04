@@ -1,9 +1,8 @@
 //===------------- PPCExpandISEL.cpp - Expand ISEL instruction ------------===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
@@ -285,7 +284,7 @@ void PPCExpandISEL::handleSpecialCases(BlockISELList &BIL,
 
     // Special case 1, all registers used by ISEL are the same one.
     if (!IsADDIInstRequired && !IsORIInstRequired) {
-      LLVM_DEBUG(dbgs() << "Remove redudant ISEL instruction.");
+      LLVM_DEBUG(dbgs() << "Remove redundant ISEL instruction.");
       // FIXME: if the CR field used has no other uses, we could eliminate the
       // instruction that defines it. This would have to be done manually
       // since this pass runs too late to run DCE after it.
@@ -305,7 +304,7 @@ void PPCExpandISEL::handleSpecialCases(BlockISELList &BIL,
     // thereby preventing this ISEL from being folded.
     if (useSameRegister(TrueValue, FalseValue) && (BIL.size() == 1)) {
       LLVM_DEBUG(
-          dbgs() << "Fold the ISEL instruction to an unconditonal copy.");
+          dbgs() << "Fold the ISEL instruction to an unconditional copy.");
       NumFolded++;
       // Note: we're using both the TrueValue and FalseValue operands so as
       // not to lose the kill flag if it is set on either of them.
@@ -392,7 +391,7 @@ void PPCExpandISEL::reorganizeBlockLayout(BlockISELList &BIL,
     // liveness state at the end of MBB (liveOut of MBB) as the liveIn for
     // NewSuccessor. Otherwise, will cause cyclic dependence.
     LivePhysRegs LPR(*MF->getSubtarget<PPCSubtarget>().getRegisterInfo());
-    SmallVector<std::pair<unsigned, const MachineOperand *>, 2> Clobbers;
+    SmallVector<std::pair<MCPhysReg, const MachineOperand *>, 2> Clobbers;
     for (MachineInstr &MI : *MBB)
       LPR.stepForward(MI, Clobbers);
     for (auto &LI : LPR)

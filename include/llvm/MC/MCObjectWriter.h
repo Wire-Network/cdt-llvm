@@ -1,9 +1,8 @@
 //===- llvm/MC/MCObjectWriter.h - Object File Writer Interface --*- C++ -*-===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 
@@ -91,6 +90,15 @@ public:
                                                       const MCFragment &FB,
                                                       bool InSet,
                                                       bool IsPCRel) const;
+
+  /// Tell the object writer to emit an address-significance table during
+  /// writeObject(). If this function is not called, all symbols are treated as
+  /// address-significant.
+  virtual void emitAddrsigSection() {}
+
+  /// Record the given symbol in the address-significance table to be written
+  /// diring writeObject().
+  virtual void addAddrsigSymbol(const MCSymbol *Sym) {}
 
   /// Write the object file and returns the number of bytes written.
   ///

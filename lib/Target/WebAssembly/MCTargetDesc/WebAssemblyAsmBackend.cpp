@@ -1,9 +1,8 @@
 //===-- WebAssemblyAsmBackend.cpp - WebAssembly Assembler Backend ---------===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 ///
@@ -17,7 +16,6 @@
 #include "llvm/MC/MCAsmBackend.h"
 #include "llvm/MC/MCAssembler.h"
 #include "llvm/MC/MCDirectives.h"
-#include "llvm/MC/MCELFObjectWriter.h"
 #include "llvm/MC/MCExpr.h"
 #include "llvm/MC/MCFixupKindInfo.h"
 #include "llvm/MC/MCObjectWriter.h"
@@ -26,18 +24,17 @@
 #include "llvm/MC/MCWasmObjectWriter.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/raw_ostream.h"
+
 using namespace llvm;
 
 namespace {
 
 class WebAssemblyAsmBackend final : public MCAsmBackend {
   bool Is64Bit;
-  bool IsELF;
 
- public:
-  explicit WebAssemblyAsmBackend(bool Is64Bit, bool IsELF)
-      : MCAsmBackend(support::little), Is64Bit(Is64Bit), IsELF(IsELF) {}
-  ~WebAssemblyAsmBackend() override {}
+public:
+  explicit WebAssemblyAsmBackend(bool Is64Bit)
+      : MCAsmBackend(support::little), Is64Bit(Is64Bit) {}
 
   unsigned getNumFixupKinds() const override {
     return WebAssembly::NumTargetFixupKinds;
@@ -74,13 +71,13 @@ class WebAssemblyAsmBackend final : public MCAsmBackend {
 const MCFixupKindInfo &
 WebAssemblyAsmBackend::getFixupKindInfo(MCFixupKind Kind) const {
   const static MCFixupKindInfo Infos[WebAssembly::NumTargetFixupKinds] = {
-    // This table *must* be in the order that the fixup_* kinds are defined in
-    // WebAssemblyFixupKinds.h.
-    //
-    // Name                     Offset (bits) Size (bits)     Flags
-    { "fixup_code_sleb128_i32", 0,            5*8,            0 },
-    { "fixup_code_sleb128_i64", 0,            10*8,           0 },
-    { "fixup_code_uleb128_i32", 0,            5*8,            0 },
+      // This table *must* be in the order that the fixup_* kinds are defined in
+      // WebAssemblyFixupKinds.h.
+      //
+      // Name                     Offset (bits) Size (bits)     Flags
+      {"fixup_sleb128_i32", 0, 5 * 8, 0},
+      {"fixup_sleb128_i64", 0, 10 * 8, 0},
+      {"fixup_uleb128_i32", 0, 5 * 8, 0},
   };
 
   if (Kind < FirstTargetFixupKind)
@@ -93,7 +90,7 @@ WebAssemblyAsmBackend::getFixupKindInfo(MCFixupKind Kind) const {
 
 bool WebAssemblyAsmBackend::writeNopData(raw_ostream &OS,
                                          uint64_t Count) const {
-  for (uint64_t i = 0; i < Count; ++i)
+  for (uint64_t I = 0; I < Count; ++I)
     OS << char(WebAssembly::Nop);
 
   return true;
@@ -120,18 +117,17 @@ void WebAssemblyAsmBackend::applyFixup(const MCAssembler &Asm,
 
   // For each byte of the fragment that the fixup touches, mask in the
   // bits from the fixup value.
-  for (unsigned i = 0; i != NumBytes; ++i)
-    Data[Offset + i] |= uint8_t((Value >> (i * 8)) & 0xff);
+  for (unsigned I = 0; I != NumBytes; ++I)
+    Data[Offset + I] |= uint8_t((Value >> (I * 8)) & 0xff);
 }
 
 std::unique_ptr<MCObjectTargetWriter>
 WebAssemblyAsmBackend::createObjectTargetWriter() const {
-  return IsELF ? createWebAssemblyELFObjectWriter(Is64Bit, 0)
-               : createWebAssemblyWasmObjectWriter(Is64Bit);
+  return createWebAssemblyWasmObjectWriter(Is64Bit);
 }
 
 } // end anonymous namespace
 
 MCAsmBackend *llvm::createWebAssemblyAsmBackend(const Triple &TT) {
-  return new WebAssemblyAsmBackend(TT.isArch64Bit(), TT.isOSBinFormatELF());
+  return new WebAssemblyAsmBackend(TT.isArch64Bit());
 }

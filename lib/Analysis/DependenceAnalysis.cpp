@@ -1,9 +1,8 @@
 //===-- DependenceAnalysis.cpp - DA Implementation --------------*- C++ -*-===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
@@ -108,8 +107,16 @@ STATISTIC(BanerjeeIndependence, "Banerjee independence");
 STATISTIC(BanerjeeSuccesses, "Banerjee successes");
 
 static cl::opt<bool>
-Delinearize("da-delinearize", cl::init(false), cl::Hidden, cl::ZeroOrMore,
-            cl::desc("Try to delinearize array references."));
+    Delinearize("da-delinearize", cl::init(true), cl::Hidden, cl::ZeroOrMore,
+                cl::desc("Try to delinearize array references."));
+static cl::opt<bool> DisableDelinearizationChecks(
+    "da-disable-delinearization-checks", cl::init(false), cl::Hidden,
+    cl::ZeroOrMore,
+    cl::desc(
+        "Disable checks that try to statically verify validity of "
+        "delinearized subscripts. Enabling this option may result in incorrect "
+        "dependence vectors for languages that allow the subscript of one "
+        "dimension to underflow or overflow into another dimension."));
 
 //===----------------------------------------------------------------------===//
 // basics
@@ -192,6 +199,13 @@ static void dumpExampleDependence(raw_ostream &OS, DependenceInfo *DA) {
 void DependenceAnalysisWrapperPass::print(raw_ostream &OS,
                                           const Module *) const {
   dumpExampleDependence(OS, info.get());
+}
+
+PreservedAnalyses
+DependenceAnalysisPrinterPass::run(Function &F, FunctionAnalysisManager &FAM) {
+  OS << "'Dependence Analysis' for function '" << F.getName() << "':\n";
+  dumpExampleDependence(OS, &FAM.getResult<DependenceAnalysis>(F));
+  return PreservedAnalyses::all();
 }
 
 //===----------------------------------------------------------------------===//
@@ -633,8 +647,8 @@ static AliasResult underlyingObjectsAlias(AliasAnalysis *AA,
                                           const MemoryLocation &LocB) {
   // Check the original locations (minus size) for noalias, which can happen for
   // tbaa, incompatible underlying object locations, etc.
-  MemoryLocation LocAS(LocA.Ptr, MemoryLocation::UnknownSize, LocA.AATags);
-  MemoryLocation LocBS(LocB.Ptr, MemoryLocation::UnknownSize, LocB.AATags);
+  MemoryLocation LocAS(LocA.Ptr, LocationSize::unknown(), LocA.AATags);
+  MemoryLocation LocBS(LocB.Ptr, LocationSize::unknown(), LocB.AATags);
   if (AA->alias(LocAS, LocBS) == NoAlias)
     return NoAlias;
 
@@ -994,6 +1008,57 @@ bool DependenceInfo::isKnownPredicate(ICmpInst::Predicate Pred, const SCEV *X,
   }
 }
 
+/// Compare to see if S is less than Size, using isKnownNegative(S - max(Size, 1))
+/// with some extra checking if S is an AddRec and we can prove less-than using
+/// the loop bounds.
+bool DependenceInfo::isKnownLessThan(const SCEV *S, const SCEV *Size) const {
+  // First unify to the same type
+  auto *SType = dyn_cast<IntegerType>(S->getType());
+  auto *SizeType = dyn_cast<IntegerType>(Size->getType());
+  if (!SType || !SizeType)
+    return false;
+  Type *MaxType =
+      (SType->getBitWidth() >= SizeType->getBitWidth()) ? SType : SizeType;
+  S = SE->getTruncateOrZeroExtend(S, MaxType);
+  Size = SE->getTruncateOrZeroExtend(Size, MaxType);
+
+  // Special check for addrecs using BE taken count
+  const SCEV *Bound = SE->getMinusSCEV(S, Size);
+  if (const SCEVAddRecExpr *AddRec = dyn_cast<SCEVAddRecExpr>(Bound)) {
+    if (AddRec->isAffine()) {
+      const SCEV *BECount = SE->getBackedgeTakenCount(AddRec->getLoop());
+      if (!isa<SCEVCouldNotCompute>(BECount)) {
+        const SCEV *Limit = AddRec->evaluateAtIteration(BECount, *SE);
+        if (SE->isKnownNegative(Limit))
+          return true;
+      }
+    }
+  }
+
+  // Check using normal isKnownNegative
+  const SCEV *LimitedBound =
+      SE->getMinusSCEV(S, SE->getSMaxExpr(Size, SE->getOne(Size->getType())));
+  return SE->isKnownNegative(LimitedBound);
+}
+
+bool DependenceInfo::isKnownNonNegative(const SCEV *S, const Value *Ptr) const {
+  bool Inbounds = false;
+  if (auto *SrcGEP = dyn_cast<GetElementPtrInst>(Ptr))
+    Inbounds = SrcGEP->isInBounds();
+  if (Inbounds) {
+    if (const SCEVAddRecExpr *AddRec = dyn_cast<SCEVAddRecExpr>(S)) {
+      if (AddRec->isAffine()) {
+        // We know S is for Ptr, the operand on a load/store, so doesn't wrap.
+        // If both parts are NonNegative, the end result will be NonNegative
+        if (SE->isKnownNonNegative(AddRec->getStart()) &&
+            SE->isKnownNonNegative(AddRec->getOperand(1)))
+          return true;
+      }
+    }
+  }
+
+  return SE->isKnownNonNegative(S);
+}
 
 // All subscripts are all the same type.
 // Loop bound may be smaller (e.g., a char).
@@ -3253,6 +3318,27 @@ bool DependenceInfo::tryDelinearize(Instruction *Src, Instruction *Dst,
 
   int size = SrcSubscripts.size();
 
+  // Statically check that the array bounds are in-range. The first subscript we
+  // don't have a size for and it cannot overflow into another subscript, so is
+  // always safe. The others need to be 0 <= subscript[i] < bound, for both src
+  // and dst.
+  // FIXME: It may be better to record these sizes and add them as constraints
+  // to the dependency checks.
+  if (!DisableDelinearizationChecks)
+    for (int i = 1; i < size; ++i) {
+      if (!isKnownNonNegative(SrcSubscripts[i], SrcPtr))
+        return false;
+
+      if (!isKnownLessThan(SrcSubscripts[i], Sizes[i - 1]))
+        return false;
+
+      if (!isKnownNonNegative(DstSubscripts[i], DstPtr))
+        return false;
+
+      if (!isKnownLessThan(DstSubscripts[i], Sizes[i - 1]))
+        return false;
+    }
+
   LLVM_DEBUG({
     dbgs() << "\nSrcSubscripts: ";
     for (int i = 0; i < size; i++)
@@ -3271,13 +3357,6 @@ bool DependenceInfo::tryDelinearize(Instruction *Src, Instruction *Dst,
     Pair[i].Src = SrcSubscripts[i];
     Pair[i].Dst = DstSubscripts[i];
     unifySubscriptType(&Pair[i]);
-
-    // FIXME: we should record the bounds SrcSizes[i] and DstSizes[i] that the
-    // delinearization has found, and add these constraints to the dependence
-    // check to avoid memory accesses overflow from one dimension into another.
-    // This is related to the problem of determining the existence of data
-    // dependences in array accesses using a different number of subscripts: in
-    // C one can access an array A[100][100]; as A[0][9999], *A[9999], etc.
   }
 
   return true;
@@ -3297,6 +3376,19 @@ static void dumpSmallBitVector(SmallBitVector &BV) {
   dbgs() << "}\n";
 }
 #endif
+
+bool DependenceInfo::invalidate(Function &F, const PreservedAnalyses &PA,
+                                FunctionAnalysisManager::Invalidator &Inv) {
+  // Check if the analysis itself has been invalidated.
+  auto PAC = PA.getChecker<DependenceAnalysis>();
+  if (!PAC.preserved() && !PAC.preservedSet<AllAnalysesOn<Function>>())
+    return true;
+
+  // Check transitive dependencies.
+  return Inv.invalidate<AAManager>(F, PA) ||
+         Inv.invalidate<ScalarEvolutionAnalysis>(F, PA) ||
+         Inv.invalidate<LoopAnalysis>(F, PA);
+}
 
 // depends -
 // Returns NULL if there is no dependence.
@@ -3439,7 +3531,7 @@ DependenceInfo::depends(Instruction *Src, Instruction *Dst,
   // to either Separable or Coupled).
   //
   // Next, we consider 1 and 2. The intersection of the GroupLoops is empty.
-  // Next, 1 and 3. The intersectionof their GroupLoops = {2}, not empty,
+  // Next, 1 and 3. The intersection of their GroupLoops = {2}, not empty,
   // so Pair[3].Group = {0, 1, 3} and Done = false.
   //
   // Next, we compare 2 against 3. The intersection of the GroupLoops is empty.

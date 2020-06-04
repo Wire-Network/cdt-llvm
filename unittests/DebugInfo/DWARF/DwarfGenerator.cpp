@@ -1,9 +1,8 @@
 //===--- unittests/DebugInfo/DWARF/DwarfGenerator.cpp -----------*- C++ -*-===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 
@@ -30,6 +29,7 @@
 #include "llvm/PassAnalysisSupport.h"
 #include "llvm/Support/TargetRegistry.h"
 #include "llvm/Support/raw_ostream.h"
+#include "llvm/Target/TargetLoweringObjectFile.h"
 #include "llvm/Target/TargetMachine.h"
 #include "llvm/Target/TargetOptions.h"
 
@@ -53,17 +53,41 @@ void dwarfgen::DIE::addAttribute(uint16_t A, dwarf::Form Form, uint64_t U) {
                 DIEInteger(U));
 }
 
+void dwarfgen::DIE::addAttribute(uint16_t A, dwarf::Form Form, const MCExpr &Expr) {
+  auto &DG = CU->getGenerator();
+  Die->addValue(DG.getAllocator(), static_cast<dwarf::Attribute>(A), Form,
+                DIEExpr(&Expr));
+}
+
 void dwarfgen::DIE::addAttribute(uint16_t A, dwarf::Form Form,
                                  StringRef String) {
   auto &DG = CU->getGenerator();
-  if (Form == DW_FORM_string) {
+  switch (Form) {
+  case DW_FORM_string:
     Die->addValue(DG.getAllocator(), static_cast<dwarf::Attribute>(A), Form,
                   new (DG.getAllocator())
                       DIEInlineString(String, DG.getAllocator()));
-  } else {
+    break;
+
+  case DW_FORM_strp:
     Die->addValue(
         DG.getAllocator(), static_cast<dwarf::Attribute>(A), Form,
         DIEString(DG.getStringPool().getEntry(*DG.getAsmPrinter(), String)));
+    break;
+
+  case DW_FORM_GNU_str_index:
+  case DW_FORM_strx:
+  case DW_FORM_strx1:
+  case DW_FORM_strx2:
+  case DW_FORM_strx3:
+  case DW_FORM_strx4:
+    Die->addValue(DG.getAllocator(), static_cast<dwarf::Attribute>(A), Form,
+                  DIEString(DG.getStringPool().getIndexedEntry(
+                      *DG.getAsmPrinter(), String)));
+    break;
+
+  default:
+    llvm_unreachable("Unhandled form!");
   }
 }
 
@@ -94,6 +118,24 @@ void dwarfgen::DIE::addAttribute(uint16_t A, dwarf::Form Form) {
   assert(Form == DW_FORM_flag_present);
   Die->addValue(DG.getAllocator(), static_cast<dwarf::Attribute>(A), Form,
                 DIEInteger(1));
+}
+
+void dwarfgen::DIE::addStrOffsetsBaseAttribute() {
+  auto &DG = CU->getGenerator();
+  auto &MC = *DG.getMCContext();
+  AsmPrinter *Asm = DG.getAsmPrinter();
+
+  const MCSymbol *SectionStart =
+      Asm->getObjFileLowering().getDwarfStrOffSection()->getBeginSymbol();
+
+  const MCExpr *Expr =
+      MCSymbolRefExpr::create(DG.getStringOffsetsStartSym(), MC);
+
+  if (!Asm->MAI->doesDwarfUseRelocationsAcrossSections())
+    Expr = MCBinaryExpr::createSub(
+        Expr, MCSymbolRefExpr::create(SectionStart, MC), MC);
+
+  addAttribute(dwarf::DW_AT_str_offsets_base, DW_FORM_sec_offset, *Expr);
 }
 
 dwarfgen::DIE dwarfgen::DIE::addChild(dwarf::Tag Tag) {
@@ -141,11 +183,11 @@ DWARFDebugLine::Prologue dwarfgen::LineTable::createBasicPrologue() const {
   P.LineRange = 14;
   P.OpcodeBase = 13;
   P.StandardOpcodeLengths = {0, 1, 1, 1, 1, 0, 0, 0, 1, 0, 0, 1};
-  P.IncludeDirectories.push_back(DWARFFormValue(DW_FORM_string));
-  P.IncludeDirectories.back().setPValue("a dir");
+  P.IncludeDirectories.push_back(
+      DWARFFormValue::createFromPValue(DW_FORM_string, "a dir"));
   P.FileNames.push_back(DWARFDebugLine::FileNameEntry());
-  P.FileNames.back().Name.setPValue("a file");
-  P.FileNames.back().Name.setForm(DW_FORM_string);
+  P.FileNames.back().Name =
+      DWARFFormValue::createFromPValue(DW_FORM_string, "a file");
   return P;
 }
 
@@ -372,10 +414,6 @@ llvm::Error dwarfgen::Generator::init(Triple TheTriple, uint16_t V) {
     return make_error<StringError>("no asm info for target " + TripleName,
                                    inconvertibleErrorCode());
 
-  MOFI.reset(new MCObjectFileInfo);
-  MC.reset(new MCContext(MAI.get(), MRI.get(), MOFI.get()));
-  MOFI->InitMCObjectFileInfo(TheTriple, /*PIC*/ false, *MC);
-
   MSTI.reset(TheTarget->createMCSubtargetInfo(TripleName, "", ""));
   if (!MSTI)
     return make_error<StringError>("no subtarget info for target " + TripleName,
@@ -392,6 +430,16 @@ llvm::Error dwarfgen::Generator::init(Triple TheTriple, uint16_t V) {
     return make_error<StringError>("no instr info info for target " +
                                        TripleName,
                                    inconvertibleErrorCode());
+
+  TM.reset(TheTarget->createTargetMachine(TripleName, "", "", TargetOptions(),
+                                          None));
+  if (!TM)
+    return make_error<StringError>("no target machine for target " + TripleName,
+                                   inconvertibleErrorCode());
+
+  TLOF = TM->getObjFileLowering();
+  MC.reset(new MCContext(MAI.get(), MRI.get(), TLOF));
+  TLOF->Initialize(*MC, *TM);
 
   MCE = TheTarget->createMCCodeEmitter(*MII, *MRI, *MC);
   if (!MCE)
@@ -410,13 +458,8 @@ llvm::Error dwarfgen::Generator::init(Triple TheTriple, uint16_t V) {
                                        TripleName,
                                    inconvertibleErrorCode());
 
-  // Finally create the AsmPrinter we'll use to emit the DIEs.
-  TM.reset(TheTarget->createTargetMachine(TripleName, "", "", TargetOptions(),
-                                          None));
-  if (!TM)
-    return make_error<StringError>("no target machine for target " + TripleName,
-                                   inconvertibleErrorCode());
 
+  // Finally create the AsmPrinter we'll use to emit the DIEs.
   Asm.reset(TheTarget->createAsmPrinter(*TM, std::unique_ptr<MCStreamer>(MS)));
   if (!Asm)
     return make_error<StringError>("no asm printer for target " + TripleName,
@@ -427,6 +470,7 @@ llvm::Error dwarfgen::Generator::init(Triple TheTriple, uint16_t V) {
   Asm->setDwarfVersion(Version);
 
   StringPool = llvm::make_unique<DwarfStringPool>(Allocator, *Asm, StringRef());
+  StringOffsetsStartSym = Asm->createTempSymbol("str_offsets_base");
 
   return Error::success();
 }
@@ -447,9 +491,14 @@ StringRef dwarfgen::Generator::generate() {
     SecOffset += CUOffset;
     CU->setLength(CUOffset - 4);
   }
-  Abbreviations.Emit(Asm.get(), MOFI->getDwarfAbbrevSection());
-  StringPool->emit(*Asm, MOFI->getDwarfStrSection());
-  MS->SwitchSection(MOFI->getDwarfInfoSection());
+  Abbreviations.Emit(Asm.get(), TLOF->getDwarfAbbrevSection());
+
+  StringPool->emitStringOffsetsTableHeader(*Asm, TLOF->getDwarfStrOffSection(),
+                                           StringOffsetsStartSym);
+  StringPool->emit(*Asm, TLOF->getDwarfStrSection(),
+                   TLOF->getDwarfStrOffSection());
+
+  MS->SwitchSection(TLOF->getDwarfInfoSection());
   for (auto &CU : CompileUnits) {
     uint16_t Version = CU->getVersion();
     auto Length = CU->getLength();
@@ -468,7 +517,7 @@ StringRef dwarfgen::Generator::generate() {
     Asm->emitDwarfDIE(*CU->getUnitDIE().Die);
   }
 
-  MS->SwitchSection(MOFI->getDwarfLineSection());
+  MS->SwitchSection(TLOF->getDwarfLineSection());
   for (auto &LT : LineTables)
     LT->generate(*MC, *Asm);
 

@@ -1,9 +1,8 @@
 //===-- R600InstrInfo.h - R600 Instruction Info Interface -------*- C++ -*-===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
@@ -15,8 +14,11 @@
 #ifndef LLVM_LIB_TARGET_AMDGPU_R600INSTRINFO_H
 #define LLVM_LIB_TARGET_AMDGPU_R600INSTRINFO_H
 
-#include "AMDGPUInstrInfo.h"
 #include "R600RegisterInfo.h"
+#include "llvm/CodeGen/TargetInstrInfo.h"
+
+#define GET_INSTRINFO_HEADER
+#include "R600GenInstrInfo.inc"
 
 namespace llvm {
 
@@ -34,7 +36,7 @@ class MachineInstr;
 class MachineInstrBuilder;
 class R600Subtarget;
 
-class R600InstrInfo final : public AMDGPUInstrInfo {
+class R600InstrInfo final : public R600GenInstrInfo {
 private:
   const R600RegisterInfo RI;
   const R600Subtarget &ST;
@@ -321,10 +323,10 @@ public:
   }
 
   unsigned getAddressSpaceForPseudoSourceKind(
-      PseudoSourceValue::PSVKind Kind) const override;
+      unsigned Kind) const override;
 };
 
-namespace AMDGPU {
+namespace R600 {
 
 int getLDSNoRetOp(uint16_t Opcode);
 

@@ -1,9 +1,8 @@
 //===-- VPlanHCFGBuilder.cpp ----------------------------------------------===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 ///
@@ -64,7 +63,9 @@ private:
   void setVPBBPredsFromBB(VPBasicBlock *VPBB, BasicBlock *BB);
   void fixPhiNodes();
   VPBasicBlock *getOrCreateVPBB(BasicBlock *BB);
+#ifndef NDEBUG
   bool isExternalDef(Value *Val);
+#endif
   VPValue *getOrCreateVPOperand(Value *IRVal);
   void createVPInstructionsForVPBB(VPBasicBlock *VPBB, BasicBlock *BB);
 
@@ -76,12 +77,6 @@ public:
   VPRegionBlock *buildPlainCFG();
 };
 } // anonymous namespace
-
-// Return true if \p Inst is an incoming Instruction to be ignored in the VPlan
-// representation.
-static bool isInstructionToIgnore(Instruction *Inst) {
-  return isa<BranchInst>(Inst);
-}
 
 // Set predecessors of \p VPBB in the same order as they are in \p BB. \p VPBB
 // must have no predecessors.
@@ -125,6 +120,7 @@ VPBasicBlock *PlainCFGBuilder::getOrCreateVPBB(BasicBlock *BB) {
   return VPBB;
 }
 
+#ifndef NDEBUG
 // Return true if \p Val is considered an external definition. An external
 // definition is either:
 // 1. A Value that is not an Instruction. This will be refined in the future.
@@ -160,6 +156,7 @@ bool PlainCFGBuilder::isExternalDef(Value *Val) {
   // Check whether Instruction definition is in loop body.
   return !TheLoop->contains(Inst);
 }
+#endif
 
 // Create a new VPValue or retrieve an existing one for the Instruction's
 // operand \p IRVal. This function must only be used to create/retrieve VPValues
@@ -197,16 +194,24 @@ void PlainCFGBuilder::createVPInstructionsForVPBB(VPBasicBlock *VPBB,
   VPIRBuilder.setInsertPoint(VPBB);
   for (Instruction &InstRef : *BB) {
     Instruction *Inst = &InstRef;
-    if (isInstructionToIgnore(Inst))
-      continue;
 
-    // There should't be any VPValue for Inst at this point. Otherwise, we
+    // There shouldn't be any VPValue for Inst at this point. Otherwise, we
     // visited Inst when we shouldn't, breaking the RPO traversal order.
     assert(!IRDef2VPValue.count(Inst) &&
            "Instruction shouldn't have been visited.");
 
+    if (auto *Br = dyn_cast<BranchInst>(Inst)) {
+      // Branch instruction is not explicitly represented in VPlan but we need
+      // to represent its condition bit when it's conditional.
+      if (Br->isConditional())
+        getOrCreateVPOperand(Br->getCondition());
+
+      // Skip the rest of the Instruction processing for Branch instructions.
+      continue;
+    }
+
     VPInstruction *NewVPInst;
-    if (PHINode *Phi = dyn_cast<PHINode>(Inst)) {
+    if (auto *Phi = dyn_cast<PHINode>(Inst)) {
       // Phi node's operands may have not been visited at this point. We create
       // an empty VPInstruction that we will fix once the whole plain CFG has
       // been built.
@@ -266,7 +271,7 @@ VPRegionBlock *PlainCFGBuilder::buildPlainCFG() {
     // Set VPBB successors. We create empty VPBBs for successors if they don't
     // exist already. Recipes will be created when the successor is visited
     // during the RPO traversal.
-    TerminatorInst *TI = BB->getTerminator();
+    Instruction *TI = BB->getTerminator();
     assert(TI && "Terminator expected.");
     unsigned NumSuccs = TI->getNumSuccessors();
 
@@ -279,7 +284,19 @@ VPRegionBlock *PlainCFGBuilder::buildPlainCFG() {
       assert(SuccVPBB0 && "Successor 0 not found.");
       VPBasicBlock *SuccVPBB1 = getOrCreateVPBB(TI->getSuccessor(1));
       assert(SuccVPBB1 && "Successor 1 not found.");
-      VPBB->setTwoSuccessors(SuccVPBB0, SuccVPBB1);
+
+      // Get VPBB's condition bit.
+      assert(isa<BranchInst>(TI) && "Unsupported terminator!");
+      auto *Br = cast<BranchInst>(TI);
+      Value *BrCond = Br->getCondition();
+      // Look up the branch condition to get the corresponding VPValue
+      // representing the condition bit in VPlan (which may be in another VPBB).
+      assert(IRDef2VPValue.count(BrCond) &&
+             "Missing condition bit in IRDef2VPValue!");
+      VPValue *VPCondBit = IRDef2VPValue[BrCond];
+
+      // Link successors using condition bit.
+      VPBB->setTwoSuccessors(SuccVPBB0, SuccVPBB1, VPCondBit);
     } else
       llvm_unreachable("Number of successors not supported.");
 
@@ -310,13 +327,28 @@ VPRegionBlock *PlainCFGBuilder::buildPlainCFG() {
   return TopRegion;
 }
 
-// Public interface to build a H-CFG.
-void VPlanHCFGBuilder::buildHierarchicalCFG(VPlan &Plan) {
-  // Build Top Region enclosing the plain CFG and set it as VPlan entry.
+VPRegionBlock *VPlanHCFGBuilder::buildPlainCFG() {
   PlainCFGBuilder PCFGBuilder(TheLoop, LI, Plan);
-  VPRegionBlock *TopRegion = PCFGBuilder.buildPlainCFG();
+  return PCFGBuilder.buildPlainCFG();
+}
+
+// Public interface to build a H-CFG.
+void VPlanHCFGBuilder::buildHierarchicalCFG() {
+  // Build Top Region enclosing the plain CFG and set it as VPlan entry.
+  VPRegionBlock *TopRegion = buildPlainCFG();
   Plan.setEntry(TopRegion);
   LLVM_DEBUG(Plan.setName("HCFGBuilder: Plain CFG\n"); dbgs() << Plan);
 
   Verifier.verifyHierarchicalCFG(TopRegion);
+
+  // Compute plain CFG dom tree for VPLInfo.
+  VPDomTree.recalculate(*TopRegion);
+  LLVM_DEBUG(dbgs() << "Dominator Tree after building the plain CFG.\n";
+             VPDomTree.print(dbgs()));
+
+  // Compute VPLInfo and keep it in Plan.
+  VPLoopInfo &VPLInfo = Plan.getVPLoopInfo();
+  VPLInfo.analyze(VPDomTree);
+  LLVM_DEBUG(dbgs() << "VPLoop Info After buildPlainCFG:\n";
+             VPLInfo.print(dbgs()));
 }

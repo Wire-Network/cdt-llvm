@@ -1,9 +1,8 @@
 //===-- MipsSubtarget.cpp - Mips Subtarget Information --------------------===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
@@ -61,8 +60,10 @@ static cl::opt<bool>
           cl::desc("Enable gp-relative addressing of mips small data items"));
 
 bool MipsSubtarget::DspWarningPrinted = false;
-
 bool MipsSubtarget::MSAWarningPrinted = false;
+bool MipsSubtarget::VirtWarningPrinted = false;
+bool MipsSubtarget::CRCWarningPrinted = false;
+bool MipsSubtarget::GINVWarningPrinted = false;
 
 void MipsSubtarget::anchor() {}
 
@@ -71,7 +72,7 @@ MipsSubtarget::MipsSubtarget(const Triple &TT, StringRef CPU, StringRef FS,
                              unsigned StackAlignOverride)
     : MipsGenSubtargetInfo(TT, CPU, FS), MipsArchVersion(MipsDefault),
       IsLittle(little), IsSoftFloat(false), IsSingleFloat(false), IsFPXX(false),
-      NoABICalls(false), IsFP64bit(false), UseOddSPReg(true),
+      NoABICalls(false), Abs2008(false), IsFP64bit(false), UseOddSPReg(true),
       IsNaN2008bit(false), IsGP64bit(false), HasVFPU(false), HasCnMips(false),
       HasMips3_32(false), HasMips3_32r2(false), HasMips4_32(false),
       HasMips4_32r2(false), HasMips5_32r2(false), InMips16Mode(false),
@@ -107,6 +108,11 @@ MipsSubtarget::MipsSubtarget(const Triple &TT, StringRef CPU, StringRef FS,
                        "See -mattr=+fp64.",
                        false);
 
+  if (isFP64bit() && !hasMips64() && hasMips32() && !hasMips32r2())
+    report_fatal_error(
+        "FPU with 64-bit registers is not available on MIPS32 pre revision 2. "
+        "Use -mcpu=mips32r2 or greater.");
+
   if (!isABI_O32() && !useOddSPReg())
     report_fatal_error("-mattr=+nooddspreg requires the O32 ABI.", false);
 
@@ -116,6 +122,8 @@ MipsSubtarget::MipsSubtarget(const Triple &TT, StringRef CPU, StringRef FS,
   if (hasMips64r6() && InMicroMipsMode)
     report_fatal_error("microMIPS64R6 is not supported", false);
 
+  if (!isABI_O32() && InMicroMipsMode)
+    report_fatal_error("microMIPS64 is not supported.", false);
 
   if (UseIndirectJumpsHazard) {
     if (InMicroMipsMode)
@@ -125,11 +133,18 @@ MipsSubtarget::MipsSubtarget(const Triple &TT, StringRef CPU, StringRef FS,
       report_fatal_error(
           "indirect jumps with hazard barriers requires MIPS32R2 or later");
   }
+  if (inAbs2008Mode() && hasMips32() && !hasMips32r2()) {
+    report_fatal_error("IEEE 754-2008 abs.fmt is not supported for the given "
+                       "architecture.",
+                       false);
+  }
+
   if (hasMips32r6()) {
     StringRef ISA = hasMips64r6() ? "MIPS64r6" : "MIPS32r6";
 
     assert(isFP64bit());
     assert(isNaN2008());
+    assert(inAbs2008Mode());
     if (hasDSP())
       report_fatal_error(ISA + " is not compatible with the DSP ASE", false);
   }
@@ -170,16 +185,27 @@ MipsSubtarget::MipsSubtarget(const Triple &TT, StringRef CPU, StringRef FS,
     }
   }
 
-  if (hasMSA() && !MSAWarningPrinted) {
-    if (hasMips64() && !hasMips64r5()) {
-      errs() << "warning: the 'msa' ASE requires MIPS64 revision 5 or "
-             << "greater\n";
-      MSAWarningPrinted = true;
-    } else if (hasMips32() && !hasMips32r5()) {
-      errs() << "warning: the 'msa' ASE requires MIPS32 revision 5 or "
-             << "greater\n";
-      MSAWarningPrinted = true;
-    }
+  StringRef ArchName = hasMips64() ? "MIPS64" : "MIPS32";
+
+  if (!hasMips32r5() && hasMSA() && !MSAWarningPrinted) {
+    errs() << "warning: the 'msa' ASE requires " << ArchName
+           << " revision 5 or greater\n";
+    MSAWarningPrinted = true;
+  }
+  if (!hasMips32r5() && hasVirt() && !VirtWarningPrinted) {
+    errs() << "warning: the 'virt' ASE requires " << ArchName
+           << " revision 5 or greater\n";
+    VirtWarningPrinted = true;
+  }
+  if (!hasMips32r6() && hasCRC() && !CRCWarningPrinted) {
+    errs() << "warning: the 'crc' ASE requires " << ArchName
+           << " revision 6 or greater\n";
+    CRCWarningPrinted = true;
+  }
+  if (!hasMips32r6() && hasGINV() && !GINVWarningPrinted) {
+    errs() << "warning: the 'ginv' ASE requires " << ArchName
+           << " revision 6 or greater\n";
+    GINVWarningPrinted = true;
   }
 
   CallLoweringInfo.reset(new MipsCallLowering(*getTargetLowering()));

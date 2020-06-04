@@ -1,9 +1,8 @@
 //=- PassPrinters.h - Utilities to print analysis info for passes -*- C++ -*-=//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 ///
@@ -48,25 +47,5 @@ BasicBlockPass *createBasicBlockPassPrinter(const PassInfo *PI,
                                             raw_ostream &out, bool Quiet);
 
 } // end namespace llvm
-
-llvm::ModulePass *createDebugifyModulePass();
-llvm::FunctionPass *createDebugifyFunctionPass();
-
-struct NewPMDebugifyPass : public llvm::PassInfoMixin<NewPMDebugifyPass> {
-  llvm::PreservedAnalyses run(llvm::Module &M, llvm::ModuleAnalysisManager &AM);
-};
-
-llvm::ModulePass *
-createCheckDebugifyModulePass(bool Strip = false,
-                              llvm::StringRef NameOfWrappedPass = "");
-
-llvm::FunctionPass *
-createCheckDebugifyFunctionPass(bool Strip = false,
-                                llvm::StringRef NameOfWrappedPass = "");
-
-struct NewPMCheckDebugifyPass
-    : public llvm::PassInfoMixin<NewPMCheckDebugifyPass> {
-  llvm::PreservedAnalyses run(llvm::Module &M, llvm::ModuleAnalysisManager &AM);
-};
 
 #endif // LLVM_TOOLS_OPT_PASSPRINTERS_H

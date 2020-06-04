@@ -1,9 +1,8 @@
 //===- AMDGPUTargetTransformInfo.h - AMDGPU specific TTI --------*- C++ -*-===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
@@ -45,17 +44,12 @@ class AMDGPUTTIImpl final : public BasicTTIImplBase<AMDGPUTTIImpl> {
 
   friend BaseT;
 
-  const AMDGPUSubtarget *ST;
-  const AMDGPUTargetLowering *TLI;
+  Triple TargetTriple;
 
 public:
   explicit AMDGPUTTIImpl(const AMDGPUTargetMachine *TM, const Function &F)
     : BaseT(TM, F.getParent()->getDataLayout()),
-      ST(TM->getSubtargetImpl(F)),
-      TLI(ST->getTargetLowering()) {}
-
-  const AMDGPUSubtarget *getST() const { return ST; }
-  const AMDGPUTargetLowering *getTLI() const { return TLI; }
+      TargetTriple(TM->getTargetTriple()) {}
 
   void getUnrollingPreferences(Loop *L, ScalarEvolution &SE,
                                TTI::UnrollingPreferences &UP);
@@ -67,7 +61,7 @@ class GCNTTIImpl final : public BasicTTIImplBase<GCNTTIImpl> {
 
   friend BaseT;
 
-  const AMDGPUSubtarget *ST;
+  const GCNSubtarget *ST;
   const AMDGPUTargetLowering *TLI;
   AMDGPUTTIImpl CommonTTI;
   bool IsGraphicsShader;
@@ -83,21 +77,23 @@ class GCNTTIImpl final : public BasicTTIImplBase<GCNTTIImpl> {
     AMDGPU::FeatureUnalignedScratchAccess,
 
     AMDGPU::FeatureAutoWaitcntBeforeBarrier,
-    AMDGPU::FeatureDebuggerEmitPrologue,
-    AMDGPU::FeatureDebuggerInsertNops,
-    AMDGPU::FeatureDebuggerReserveRegs,
 
     // Property of the kernel/environment which can't actually differ.
     AMDGPU::FeatureSGPRInitBug,
     AMDGPU::FeatureXNACK,
     AMDGPU::FeatureTrapHandler,
+    AMDGPU::FeatureCodeObjectV3,
+
+    // The default assumption needs to be ecc is enabled, but no directly
+    // exposed operations depend on it, so it can be safely inlined.
+    AMDGPU::FeatureSRAMECC,
 
     // Perf-tuning features
     AMDGPU::FeatureFastFMAF32,
     AMDGPU::HalfRate64Ops
   };
 
-  const AMDGPUSubtarget *getST() const { return ST; }
+  const GCNSubtarget *getST() const { return ST; }
   const AMDGPUTargetLowering *getTLI() const { return TLI; }
 
   static inline int getFullRateInstrCost() {
@@ -124,7 +120,7 @@ class GCNTTIImpl final : public BasicTTIImplBase<GCNTTIImpl> {
 public:
   explicit GCNTTIImpl(const AMDGPUTargetMachine *TM, const Function &F)
     : BaseT(TM, F.getParent()->getDataLayout()),
-      ST(TM->getSubtargetImpl(F)),
+      ST(static_cast<const GCNSubtarget*>(TM->getSubtargetImpl(F))),
       TLI(ST->getTargetLowering()),
       CommonTTI(TM, F),
       IsGraphicsShader(AMDGPU::isShader(F.getCallingConv())) {}
@@ -184,8 +180,7 @@ public:
     // don't use flat addressing.
     if (IsGraphicsShader)
       return -1;
-    return ST->hasFlatAddressSpace() ?
-      ST->getAMDGPUAS().FLAT_ADDRESS : ST->getAMDGPUAS().UNKNOWN_ADDRESS_SPACE;
+    return AMDGPUAS::FLAT_ADDRESS;
   }
 
   unsigned getVectorSplitCost() { return 0; }
@@ -196,7 +191,9 @@ public:
   bool areInlineCompatible(const Function *Caller,
                            const Function *Callee) const;
 
-  unsigned getInliningThresholdMultiplier() { return 9; }
+  unsigned getInliningThresholdMultiplier() { return 7; }
+
+  int getInlinerVectorBonusPercent() { return 0; }
 
   int getArithmeticReductionCost(unsigned Opcode,
                                  Type *Ty,
@@ -212,18 +209,18 @@ class R600TTIImpl final : public BasicTTIImplBase<R600TTIImpl> {
 
   friend BaseT;
 
-  const AMDGPUSubtarget *ST;
+  const R600Subtarget *ST;
   const AMDGPUTargetLowering *TLI;
   AMDGPUTTIImpl CommonTTI;
 
 public:
   explicit R600TTIImpl(const AMDGPUTargetMachine *TM, const Function &F)
     : BaseT(TM, F.getParent()->getDataLayout()),
-      ST(TM->getSubtargetImpl(F)),
+      ST(static_cast<const R600Subtarget*>(TM->getSubtargetImpl(F))),
       TLI(ST->getTargetLowering()),
       CommonTTI(TM, F)	{}
 
-  const AMDGPUSubtarget *getST() const { return ST; }
+  const R600Subtarget *getST() const { return ST; }
   const AMDGPUTargetLowering *getTLI() const { return TLI; }
 
   void getUnrollingPreferences(Loop *L, ScalarEvolution &SE,

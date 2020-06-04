@@ -1,9 +1,8 @@
 //===- StackMaps.cpp ------------------------------------------------------===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 
@@ -268,11 +267,10 @@ StackMaps::parseRegisterLiveOutMask(const uint32_t *Mask) const {
   // in the list. Merge entries that refer to the same dwarf register and use
   // the maximum size that needs to be spilled.
 
-  llvm::sort(LiveOuts.begin(), LiveOuts.end(),
-             [](const LiveOutReg &LHS, const LiveOutReg &RHS) {
-               // Only sort by the dwarf register number.
-               return LHS.DwarfRegNum < RHS.DwarfRegNum;
-             });
+  llvm::sort(LiveOuts, [](const LiveOutReg &LHS, const LiveOutReg &RHS) {
+    // Only sort by the dwarf register number.
+    return LHS.DwarfRegNum < RHS.DwarfRegNum;
+  });
 
   for (auto I = LiveOuts.begin(), E = LiveOuts.end(); I != E; ++I) {
     for (auto II = std::next(I); II != E; ++II) {

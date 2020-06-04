@@ -1,9 +1,8 @@
 //-- SystemZMachineScheduler.cpp - SystemZ Scheduler Interface -*- C++ -*---==//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
@@ -109,8 +108,8 @@ void SystemZPostRASchedStrategy::enterMBB(MachineBasicBlock *NextMBB) {
        I != SinglePredMBB->end(); I++) {
     LLVM_DEBUG(dbgs() << "** Emitting incoming branch: "; I->dump(););
     bool TakenBranch = (I->isBranch() &&
-      (TII->getBranchInfo(*I).Target->isReg() || // Relative branch
-       TII->getBranchInfo(*I).Target->getMBB() == MBB));
+                        (TII->getBranchInfo(*I).isIndirect() ||
+                         TII->getBranchInfo(*I).getMBBTarget() == MBB));
     HazardRec->emitInstruction(&*I, TakenBranch);
     if (TakenBranch)
       break;
@@ -129,7 +128,7 @@ SystemZPostRASchedStrategy::
 SystemZPostRASchedStrategy(const MachineSchedContext *C)
   : MLI(C->MLI),
     TII(static_cast<const SystemZInstrInfo *>
-        (C->MF->getSubtarget().getInstrInfo())), 
+        (C->MF->getSubtarget().getInstrInfo())),
     MBB(nullptr), HazardRec(nullptr) {
   const TargetSubtargetInfo *ST = &C->MF->getSubtarget();
   SchedModel.init(ST);
@@ -169,8 +168,7 @@ SUnit *SystemZPostRASchedStrategy::pickNode(bool &IsTopNode) {
     return *Available.begin();
   }
 
-  // All nodes that are possible to schedule are stored by in the
-  // Available set.
+  // All nodes that are possible to schedule are stored in the Available set.
   LLVM_DEBUG(dbgs() << "** Available: "; Available.dump(*HazardRec););
 
   Candidate Best;

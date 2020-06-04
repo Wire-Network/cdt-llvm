@@ -1,9 +1,8 @@
 //===- CompileOnDemandLayer.h - Compile each function on demand -*- C++ -*-===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
@@ -16,13 +15,16 @@
 #define LLVM_EXECUTIONENGINE_ORC_COMPILEONDEMANDLAYER_H
 
 #include "llvm/ADT/APInt.h"
+#include "llvm/ADT/Optional.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/Twine.h"
 #include "llvm/ExecutionEngine/JITSymbol.h"
-#include "llvm/ExecutionEngine/Orc/Core.h"
 #include "llvm/ExecutionEngine/Orc/IndirectionUtils.h"
 #include "llvm/ExecutionEngine/Orc/LambdaResolver.h"
+#include "llvm/ExecutionEngine/Orc/Layer.h"
+#include "llvm/ExecutionEngine/Orc/LazyReexports.h"
+#include "llvm/ExecutionEngine/Orc/Legacy.h"
 #include "llvm/ExecutionEngine/Orc/OrcError.h"
 #include "llvm/ExecutionEngine/RuntimeDyld.h"
 #include "llvm/IR/Attributes.h"
@@ -57,6 +59,77 @@ class Value;
 
 namespace orc {
 
+class ExtractingIRMaterializationUnit;
+
+class CompileOnDemandLayer : public IRLayer {
+  friend class PartitioningIRMaterializationUnit;
+
+public:
+  /// Builder for IndirectStubsManagers.
+  using IndirectStubsManagerBuilder =
+      std::function<std::unique_ptr<IndirectStubsManager>()>;
+
+  using GlobalValueSet = std::set<const GlobalValue *>;
+
+  /// Partitioning function.
+  using PartitionFunction =
+      std::function<Optional<GlobalValueSet>(GlobalValueSet Requested)>;
+
+  /// Off-the-shelf partitioning which compiles all requested symbols (usually
+  /// a single function at a time).
+  static Optional<GlobalValueSet> compileRequested(GlobalValueSet Requested);
+
+  /// Off-the-shelf partitioning which compiles whole modules whenever any
+  /// symbol in them is requested.
+  static Optional<GlobalValueSet> compileWholeModule(GlobalValueSet Requested);
+
+  /// Construct a CompileOnDemandLayer.
+  CompileOnDemandLayer(ExecutionSession &ES, IRLayer &BaseLayer,
+                        LazyCallThroughManager &LCTMgr,
+                        IndirectStubsManagerBuilder BuildIndirectStubsManager);
+
+  /// Sets the partition function.
+  void setPartitionFunction(PartitionFunction Partition);
+
+  /// Emits the given module. This should not be called by clients: it will be
+  /// called by the JIT when a definition added via the add method is requested.
+  void emit(MaterializationResponsibility R, ThreadSafeModule TSM) override;
+
+private:
+  struct PerDylibResources {
+  public:
+    PerDylibResources(JITDylib &ImplD,
+                      std::unique_ptr<IndirectStubsManager> ISMgr)
+        : ImplD(ImplD), ISMgr(std::move(ISMgr)) {}
+    JITDylib &getImplDylib() { return ImplD; }
+    IndirectStubsManager &getISManager() { return *ISMgr; }
+
+  private:
+    JITDylib &ImplD;
+    std::unique_ptr<IndirectStubsManager> ISMgr;
+  };
+
+  using PerDylibResourcesMap = std::map<const JITDylib *, PerDylibResources>;
+
+  PerDylibResources &getPerDylibResources(JITDylib &TargetD);
+
+  void cleanUpModule(Module &M);
+
+  void expandPartition(GlobalValueSet &Partition);
+
+  void emitPartition(MaterializationResponsibility R, ThreadSafeModule TSM,
+                     IRMaterializationUnit::SymbolNameToDefinitionMap Defs);
+
+  mutable std::mutex CODLayerMutex;
+
+  IRLayer &BaseLayer;
+  LazyCallThroughManager &LCTMgr;
+  IndirectStubsManagerBuilder BuildIndirectStubsManager;
+  PerDylibResourcesMap DylibResources;
+  PartitionFunction Partition = compileRequested;
+  SymbolLinkagePromoter PromoteSymbols;
+};
+
 /// Compile-on-demand layer.
 ///
 ///   When a module is added to this layer a stub is created for each of its
@@ -67,7 +140,7 @@ namespace orc {
 template <typename BaseLayerT,
           typename CompileCallbackMgrT = JITCompileCallbackManager,
           typename IndirectStubsMgrT = IndirectStubsManager>
-class CompileOnDemandLayer {
+class LegacyCompileOnDemandLayer {
 private:
   template <typename MaterializerFtor>
   class LambdaMaterializer final : public ValueMaterializer {
@@ -116,25 +189,6 @@ private:
     using RO = ResourceOwnerImpl<ResourceT, ResourcePtrT>;
     return llvm::make_unique<RO>(std::move(ResourcePtr));
   }
-
-  class StaticGlobalRenamer {
-  public:
-    StaticGlobalRenamer() = default;
-    StaticGlobalRenamer(StaticGlobalRenamer &&) = default;
-    StaticGlobalRenamer &operator=(StaticGlobalRenamer &&) = default;
-
-    void rename(Module &M) {
-      for (auto &F : M)
-        if (F.hasLocalLinkage())
-          F.setName("$static." + Twine(NextId++));
-      for (auto &G : M.globals())
-        if (G.hasLocalLinkage())
-          G.setName("$static." + Twine(NextId++));
-    }
-
-  private:
-    unsigned NextId = 0;
-  };
 
   struct LogicalDylib {
     struct SourceModuleEntry {
@@ -189,7 +243,7 @@ private:
     VModuleKey K;
     std::shared_ptr<SymbolResolver> BackingResolver;
     std::unique_ptr<IndirectStubsMgrT> StubsMgr;
-    StaticGlobalRenamer StaticRenamer;
+    SymbolLinkagePromoter PromoteSymbols;
     SourceModulesList SourceModules;
     std::vector<VModuleKey> BaseLayerVModuleKeys;
   };
@@ -210,13 +264,26 @@ public:
       std::function<void(VModuleKey K, std::shared_ptr<SymbolResolver> R)>;
 
   /// Construct a compile-on-demand layer instance.
-  CompileOnDemandLayer(ExecutionSession &ES, BaseLayerT &BaseLayer,
-                       SymbolResolverGetter GetSymbolResolver,
-                       SymbolResolverSetter SetSymbolResolver,
-                       PartitioningFtor Partition,
-                       CompileCallbackMgrT &CallbackMgr,
-                       IndirectStubsManagerBuilderT CreateIndirectStubsManager,
-                       bool CloneStubsIntoPartitions = true)
+  LLVM_ATTRIBUTE_DEPRECATED(
+      LegacyCompileOnDemandLayer(
+          ExecutionSession &ES, BaseLayerT &BaseLayer,
+          SymbolResolverGetter GetSymbolResolver,
+          SymbolResolverSetter SetSymbolResolver, PartitioningFtor Partition,
+          CompileCallbackMgrT &CallbackMgr,
+          IndirectStubsManagerBuilderT CreateIndirectStubsManager,
+          bool CloneStubsIntoPartitions = true),
+      "ORCv1 layers (layers with the 'Legacy' prefix) are deprecated. Please "
+      "use "
+      "the ORCv2 LegacyCompileOnDemandLayer instead");
+
+  /// Legacy layer constructor with deprecation acknowledgement.
+  LegacyCompileOnDemandLayer(
+      ORCv1DeprecationAcknowledgement, ExecutionSession &ES,
+      BaseLayerT &BaseLayer, SymbolResolverGetter GetSymbolResolver,
+      SymbolResolverSetter SetSymbolResolver, PartitioningFtor Partition,
+      CompileCallbackMgrT &CallbackMgr,
+      IndirectStubsManagerBuilderT CreateIndirectStubsManager,
+      bool CloneStubsIntoPartitions = true)
       : ES(ES), BaseLayer(BaseLayer),
         GetSymbolResolver(std::move(GetSymbolResolver)),
         SetSymbolResolver(std::move(SetSymbolResolver)),
@@ -224,7 +291,7 @@ public:
         CreateIndirectStubsManager(std::move(CreateIndirectStubsManager)),
         CloneStubsIntoPartitions(CloneStubsIntoPartitions) {}
 
-  ~CompileOnDemandLayer() {
+  ~LegacyCompileOnDemandLayer() {
     // FIXME: Report error on log.
     while (!LogicalDylibs.empty())
       consumeError(removeModule(LogicalDylibs.begin()->first));
@@ -311,14 +378,9 @@ public:
 private:
   Error addLogicalModule(LogicalDylib &LD, std::unique_ptr<Module> SrcMPtr) {
 
-    // Rename all static functions / globals to $static.X :
-    // This will unique the names across all modules in the logical dylib,
-    // simplifying symbol lookup.
-    LD.StaticRenamer.rename(*SrcMPtr);
-
-    // Bump the linkage and rename any anonymous/privote members in SrcM to
-    // ensure that everything will resolve properly after we partition SrcM.
-    makeAllSymbolsExternallyAccessible(*SrcMPtr);
+    // Rename anonymous globals and promote linkage to ensure that everything
+    // will resolve properly after we partition SrcM.
+    LD.PromoteSymbols(*SrcMPtr);
 
     // Create a logical module handle for SrcM within the logical dylib.
     Module &SrcM = *SrcMPtr;
@@ -458,20 +520,30 @@ private:
     };
 
     auto GVsResolver = createSymbolResolver(
-        [&LD, LegacyLookup](SymbolFlagsMap &SymbolFlags,
-                            const SymbolNameSet &Symbols) {
-          auto NotFoundViaLegacyLookup =
-              lookupFlagsWithLegacyFn(SymbolFlags, Symbols, LegacyLookup);
+        [&LD, LegacyLookup](const SymbolNameSet &Symbols) {
+          auto RS = getResponsibilitySetWithLegacyFn(Symbols, LegacyLookup);
 
-          if (!NotFoundViaLegacyLookup) {
-            logAllUnhandledErrors(NotFoundViaLegacyLookup.takeError(), errs(),
-                                  "CODLayer/GVsResolver flags lookup failed: ");
-            SymbolFlags.clear();
+          if (!RS) {
+            logAllUnhandledErrors(
+                RS.takeError(), errs(),
+                "CODLayer/GVsResolver responsibility set lookup failed: ");
             return SymbolNameSet();
           }
 
-          return LD.BackingResolver->lookupFlags(SymbolFlags,
-                                                 *NotFoundViaLegacyLookup);
+          if (RS->size() == Symbols.size())
+            return *RS;
+
+          SymbolNameSet NotFoundViaLegacyLookup;
+          for (auto &S : Symbols)
+            if (!RS->count(S))
+              NotFoundViaLegacyLookup.insert(S);
+          auto RS2 =
+              LD.BackingResolver->getResponsibilitySet(NotFoundViaLegacyLookup);
+
+          for (auto &S : RS2)
+            (*RS).insert(S);
+
+          return *RS;
         },
         [this, &LD,
          LegacyLookup](std::shared_ptr<AsynchronousSymbolQuery> Query,
@@ -618,18 +690,30 @@ private:
 
     // Create memory manager and symbol resolver.
     auto Resolver = createSymbolResolver(
-        [&LD, LegacyLookup](SymbolFlagsMap &SymbolFlags,
-                            const SymbolNameSet &Symbols) {
-          auto NotFoundViaLegacyLookup =
-              lookupFlagsWithLegacyFn(SymbolFlags, Symbols, LegacyLookup);
-          if (!NotFoundViaLegacyLookup) {
-            logAllUnhandledErrors(NotFoundViaLegacyLookup.takeError(), errs(),
-                                  "CODLayer/SubResolver flags lookup failed: ");
-            SymbolFlags.clear();
+        [&LD, LegacyLookup](const SymbolNameSet &Symbols) {
+          auto RS = getResponsibilitySetWithLegacyFn(Symbols, LegacyLookup);
+          if (!RS) {
+            logAllUnhandledErrors(
+                RS.takeError(), errs(),
+                "CODLayer/SubResolver responsibility set lookup failed: ");
             return SymbolNameSet();
           }
-          return LD.BackingResolver->lookupFlags(SymbolFlags,
-                                                 *NotFoundViaLegacyLookup);
+
+          if (RS->size() == Symbols.size())
+            return *RS;
+
+          SymbolNameSet NotFoundViaLegacyLookup;
+          for (auto &S : Symbols)
+            if (!RS->count(S))
+              NotFoundViaLegacyLookup.insert(S);
+
+          auto RS2 =
+              LD.BackingResolver->getResponsibilitySet(NotFoundViaLegacyLookup);
+
+          for (auto &S : RS2)
+            (*RS).insert(S);
+
+          return *RS;
         },
         [this, &LD, LegacyLookup](std::shared_ptr<AsynchronousSymbolQuery> Q,
                                   SymbolNameSet Symbols) {
@@ -658,8 +742,24 @@ private:
   bool CloneStubsIntoPartitions;
 };
 
-} // end namespace orc
+template <typename BaseLayerT, typename CompileCallbackMgrT,
+          typename IndirectStubsMgrT>
+LegacyCompileOnDemandLayer<BaseLayerT, CompileCallbackMgrT, IndirectStubsMgrT>::
+    LegacyCompileOnDemandLayer(
+        ExecutionSession &ES, BaseLayerT &BaseLayer,
+        SymbolResolverGetter GetSymbolResolver,
+        SymbolResolverSetter SetSymbolResolver, PartitioningFtor Partition,
+        CompileCallbackMgrT &CallbackMgr,
+        IndirectStubsManagerBuilderT CreateIndirectStubsManager,
+        bool CloneStubsIntoPartitions)
+    : ES(ES), BaseLayer(BaseLayer),
+      GetSymbolResolver(std::move(GetSymbolResolver)),
+      SetSymbolResolver(std::move(SetSymbolResolver)),
+      Partition(std::move(Partition)), CompileCallbackMgr(CallbackMgr),
+      CreateIndirectStubsManager(std::move(CreateIndirectStubsManager)),
+      CloneStubsIntoPartitions(CloneStubsIntoPartitions) {}
 
+} // end namespace orc
 } // end namespace llvm
 
 #endif // LLVM_EXECUTIONENGINE_ORC_COMPILEONDEMANDLAYER_H

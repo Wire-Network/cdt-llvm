@@ -1,9 +1,8 @@
 //===- MipsDSPInstrInfo.td - DSP ASE instructions -*- tablegen ------------*-=//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
@@ -516,6 +515,7 @@ class MTHI_DESC_BASE<string instr_asm, RegisterOperand RO, InstrItinClass itin> 
 
 class BPOSGE32_PSEUDO_DESC_BASE<SDPatternOperator OpNode, InstrItinClass itin> :
   MipsPseudo<(outs GPR32Opnd:$dst), (ins), [(set GPR32Opnd:$dst, (OpNode))]> {
+  bit hasNoSchedulingInfo = 1;
   bit usesCustomInserter = 1;
 }
 
@@ -1289,7 +1289,7 @@ let isPseudo = 1, isCodeGenOnly = 1, hasNoSchedulingInfo = 1 in {
 }
 
 let DecoderNamespace = "MipsDSP", Arch = "dsp",
-    AdditionalPredicates = [HasDSP] in {
+    ASEPredicate = [HasDSP] in {
   def LWDSP : Load<"lw", DSPROpnd, null_frag, II_LW>, DspMMRel, LW_FM<0x23>;
   def SWDSP : Store<"sw", DSPROpnd, null_frag, II_SW>, DspMMRel, LW_FM<0x2b>;
 }
@@ -1314,7 +1314,9 @@ def PseudoCMPU_LE_QB : PseudoCMP<CMPU_LE_QB>;
 def PseudoPICK_PH : PseudoPICK<PICK_PH>;
 def PseudoPICK_QB : PseudoPICK<PICK_QB>;
 
-def PseudoMTLOHI_DSP : PseudoMTLOHI<ACC64DSP, GPR32>;
+let AdditionalPredicates = [HasDSP] in {
+  def PseudoMTLOHI_DSP : PseudoMTLOHI<ACC64DSP, GPR32>;
+}
 
 // Patterns.
 class DSPPat<dag pattern, dag result, Predicate pred = HasDSP> :

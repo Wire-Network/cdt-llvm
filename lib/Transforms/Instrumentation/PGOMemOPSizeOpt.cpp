@@ -1,9 +1,8 @@
 //===-- PGOMemOPSizeOpt.cpp - Optimizations based on value profiling ===//
 //
-//                      The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
@@ -20,11 +19,13 @@
 #include "llvm/ADT/StringRef.h"
 #include "llvm/ADT/Twine.h"
 #include "llvm/Analysis/BlockFrequencyInfo.h"
+#include "llvm/Analysis/DomTreeUpdater.h"
 #include "llvm/Analysis/GlobalsModRef.h"
 #include "llvm/Analysis/OptimizationRemarkEmitter.h"
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/CallSite.h"
 #include "llvm/IR/DerivedTypes.h"
+#include "llvm/IR/Dominators.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/InstVisitor.h"
@@ -112,6 +113,7 @@ private:
     AU.addRequired<BlockFrequencyInfoWrapperPass>();
     AU.addRequired<OptimizationRemarkEmitterWrapperPass>();
     AU.addPreserved<GlobalsAAWrapperPass>();
+    AU.addPreserved<DominatorTreeWrapperPass>();
   }
 };
 } // end anonymous namespace
@@ -133,8 +135,8 @@ namespace {
 class MemOPSizeOpt : public InstVisitor<MemOPSizeOpt> {
 public:
   MemOPSizeOpt(Function &Func, BlockFrequencyInfo &BFI,
-               OptimizationRemarkEmitter &ORE)
-      : Func(Func), BFI(BFI), ORE(ORE), Changed(false) {
+               OptimizationRemarkEmitter &ORE, DominatorTree *DT)
+      : Func(Func), BFI(BFI), ORE(ORE), DT(DT), Changed(false) {
     ValueDataArray =
         llvm::make_unique<InstrProfValueData[]>(MemOPMaxVersion + 2);
     // Get the MemOPSize range information from option MemOPSizeRange,
@@ -170,6 +172,7 @@ private:
   Function &Func;
   BlockFrequencyInfo &BFI;
   OptimizationRemarkEmitter &ORE;
+  DominatorTree *DT;
   bool Changed;
   std::vector<MemIntrinsic *> WorkList;
   // Start of the previse range.
@@ -336,15 +339,16 @@ bool MemOPSizeOpt::perform(MemIntrinsic *MI) {
   LLVM_DEBUG(dbgs() << *BB << "\n");
   auto OrigBBFreq = BFI.getBlockFreq(BB);
 
-  BasicBlock *DefaultBB = SplitBlock(BB, MI);
+  BasicBlock *DefaultBB = SplitBlock(BB, MI, DT);
   BasicBlock::iterator It(*MI);
   ++It;
   assert(It != DefaultBB->end());
-  BasicBlock *MergeBB = SplitBlock(DefaultBB, &(*It));
+  BasicBlock *MergeBB = SplitBlock(DefaultBB, &(*It), DT);
   MergeBB->setName("MemOP.Merge");
   BFI.setBlockFreq(MergeBB, OrigBBFreq.getFrequency());
   DefaultBB->setName("MemOP.Default");
 
+  DomTreeUpdater DTU(DT, DomTreeUpdater::UpdateStrategy::Eager);
   auto &Ctx = Func.getContext();
   IRBuilder<> IRB(BB);
   BB->getTerminator()->eraseFromParent();
@@ -361,6 +365,10 @@ bool MemOPSizeOpt::perform(MemIntrinsic *MI) {
 
   LLVM_DEBUG(dbgs() << "\n\n== Basic Block After==\n");
 
+  std::vector<DominatorTree::UpdateType> Updates;
+  if (DT)
+    Updates.reserve(2 * SizeIds.size());
+
   for (uint64_t SizeId : SizeIds) {
     BasicBlock *CaseBB = BasicBlock::Create(
         Ctx, Twine("MemOP.Case.") + Twine(SizeId), &Func, DefaultBB);
@@ -375,8 +383,15 @@ bool MemOPSizeOpt::perform(MemIntrinsic *MI) {
     IRBuilder<> IRBCase(CaseBB);
     IRBCase.CreateBr(MergeBB);
     SI->addCase(CaseSizeId, CaseBB);
+    if (DT) {
+      Updates.push_back({DominatorTree::Insert, CaseBB, MergeBB});
+      Updates.push_back({DominatorTree::Insert, BB, CaseBB});
+    }
     LLVM_DEBUG(dbgs() << *CaseBB << "\n");
   }
+  DTU.applyUpdates(Updates);
+  Updates.clear();
+
   setProfMetadata(Func.getParent(), SI, CaseCounts, MaxCount);
 
   LLVM_DEBUG(dbgs() << *BB << "\n");
@@ -397,13 +412,14 @@ bool MemOPSizeOpt::perform(MemIntrinsic *MI) {
 } // namespace
 
 static bool PGOMemOPSizeOptImpl(Function &F, BlockFrequencyInfo &BFI,
-                                OptimizationRemarkEmitter &ORE) {
+                                OptimizationRemarkEmitter &ORE,
+                                DominatorTree *DT) {
   if (DisableMemOPOPT)
     return false;
 
   if (F.hasFnAttribute(Attribute::OptimizeForSize))
     return false;
-  MemOPSizeOpt MemOPSizeOpt(F, BFI, ORE);
+  MemOPSizeOpt MemOPSizeOpt(F, BFI, ORE, DT);
   MemOPSizeOpt.perform();
   return MemOPSizeOpt.isChanged();
 }
@@ -412,7 +428,9 @@ bool PGOMemOPSizeOptLegacyPass::runOnFunction(Function &F) {
   BlockFrequencyInfo &BFI =
       getAnalysis<BlockFrequencyInfoWrapperPass>().getBFI();
   auto &ORE = getAnalysis<OptimizationRemarkEmitterWrapperPass>().getORE();
-  return PGOMemOPSizeOptImpl(F, BFI, ORE);
+  auto *DTWP = getAnalysisIfAvailable<DominatorTreeWrapperPass>();
+  DominatorTree *DT = DTWP ? &DTWP->getDomTree() : nullptr;
+  return PGOMemOPSizeOptImpl(F, BFI, ORE, DT);
 }
 
 namespace llvm {
@@ -422,11 +440,13 @@ PreservedAnalyses PGOMemOPSizeOpt::run(Function &F,
                                        FunctionAnalysisManager &FAM) {
   auto &BFI = FAM.getResult<BlockFrequencyAnalysis>(F);
   auto &ORE = FAM.getResult<OptimizationRemarkEmitterAnalysis>(F);
-  bool Changed = PGOMemOPSizeOptImpl(F, BFI, ORE);
+  auto *DT = FAM.getCachedResult<DominatorTreeAnalysis>(F);
+  bool Changed = PGOMemOPSizeOptImpl(F, BFI, ORE, DT);
   if (!Changed)
     return PreservedAnalyses::all();
   auto PA = PreservedAnalyses();
   PA.preserve<GlobalsAA>();
+  PA.preserve<DominatorTreeAnalysis>();
   return PA;
 }
 } // namespace llvm

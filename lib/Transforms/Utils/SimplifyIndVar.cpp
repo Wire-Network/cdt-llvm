@@ -1,9 +1,8 @@
 //===-- SimplifyIndVar.cpp - Induction variable simplification ------------===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
@@ -23,6 +22,7 @@
 #include "llvm/IR/Dominators.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Instructions.h"
+#include "llvm/IR/IntrinsicInst.h"
 #include "llvm/IR/PatternMatch.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_ostream.h"
@@ -80,7 +80,9 @@ namespace {
     bool eliminateIdentitySCEV(Instruction *UseInst, Instruction *IVOperand);
     bool replaceIVUserWithLoopInvariant(Instruction *UseInst);
 
-    bool eliminateOverflowIntrinsic(CallInst *CI);
+    bool eliminateOverflowIntrinsic(WithOverflowInst *WO);
+    bool eliminateSaturatingIntrinsic(SaturatingInst *SI);
+    bool eliminateTrunc(TruncInst *TI);
     bool eliminateIVUser(Instruction *UseInst, Instruction *IVOperand);
     bool makeIVComparisonInvariant(ICmpInst *ICmp, Value *IVOperand);
     void eliminateIVComparison(ICmpInst *ICmp, Value *IVOperand);
@@ -105,8 +107,9 @@ namespace {
 /// Otherwise return null.
 Value *SimplifyIndvar::foldIVUser(Instruction *UseInst, Instruction *IVOperand) {
   Value *IVSrc = nullptr;
-  unsigned OperIdx = 0;
+  const unsigned OperIdx = 0;
   const SCEV *FoldedExpr = nullptr;
+  bool MustDropExactFlag = false;
   switch (UseInst->getOpcode()) {
   default:
     return nullptr;
@@ -139,6 +142,11 @@ Value *SimplifyIndvar::foldIVUser(Instruction *UseInst, Instruction *IVOperand) 
                            APInt::getOneBitSet(BitWidth, D->getZExtValue()));
     }
     FoldedExpr = SE->getUDivExpr(SE->getSCEV(IVSrc), SE->getSCEV(D));
+    // We might have 'exact' flag set at this point which will no longer be
+    // correct after we make the replacement.
+    if (UseInst->isExact() &&
+        SE->getSCEV(IVSrc) != SE->getMulExpr(FoldedExpr, SE->getSCEV(D)))
+      MustDropExactFlag = true;
   }
   // We have something that might fold it's operand. Compare SCEVs.
   if (!SE->isSCEVable(UseInst->getType()))
@@ -153,6 +161,9 @@ Value *SimplifyIndvar::foldIVUser(Instruction *UseInst, Instruction *IVOperand) 
 
   UseInst->setOperand(OperIdx, IVSrc);
   assert(SE->getSCEV(UseInst) == FoldedExpr && "bad SCEV with folded oper");
+
+  if (MustDropExactFlag)
+    UseInst->dropPoisonGeneratingFlags();
 
   ++NumElimOperand;
   Changed = true;
@@ -195,7 +206,7 @@ bool SimplifyIndvar::makeIVComparisonInvariant(ICmpInst *ICmp,
   SmallDenseMap<const SCEV*, Value*> CheapExpansions;
   CheapExpansions[S] = ICmp->getOperand(IVOperIdx);
   CheapExpansions[X] = ICmp->getOperand(1 - IVOperIdx);
-  
+
   // TODO: Support multiple entry loops?  (We currently bail out of these in
   // the IndVarSimplify pass)
   if (auto *BB = L->getLoopPredecessor()) {
@@ -391,61 +402,29 @@ void SimplifyIndvar::simplifyIVRemainder(BinaryOperator *Rem, Value *IVOperand,
   replaceSRemWithURem(Rem);
 }
 
-bool SimplifyIndvar::eliminateOverflowIntrinsic(CallInst *CI) {
-  auto *F = CI->getCalledFunction();
-  if (!F)
-    return false;
-
-  typedef const SCEV *(ScalarEvolution::*OperationFunctionTy)(
-      const SCEV *, const SCEV *, SCEV::NoWrapFlags, unsigned);
-  typedef const SCEV *(ScalarEvolution::*ExtensionFunctionTy)(
-      const SCEV *, Type *, unsigned);
-
-  OperationFunctionTy Operation;
-  ExtensionFunctionTy Extension;
-
-  Instruction::BinaryOps RawOp;
-
-  // We always have exactly one of nsw or nuw.  If NoSignedOverflow is false, we
-  // have nuw.
-  bool NoSignedOverflow;
-
-  switch (F->getIntrinsicID()) {
+static bool willNotOverflow(ScalarEvolution *SE, Instruction::BinaryOps BinOp,
+                            bool Signed, const SCEV *LHS, const SCEV *RHS) {
+  const SCEV *(ScalarEvolution::*Operation)(const SCEV *, const SCEV *,
+                                            SCEV::NoWrapFlags, unsigned);
+  switch (BinOp) {
   default:
-    return false;
-
-  case Intrinsic::sadd_with_overflow:
+    llvm_unreachable("Unsupported binary op");
+  case Instruction::Add:
     Operation = &ScalarEvolution::getAddExpr;
-    Extension = &ScalarEvolution::getSignExtendExpr;
-    RawOp = Instruction::Add;
-    NoSignedOverflow = true;
     break;
-
-  case Intrinsic::uadd_with_overflow:
-    Operation = &ScalarEvolution::getAddExpr;
-    Extension = &ScalarEvolution::getZeroExtendExpr;
-    RawOp = Instruction::Add;
-    NoSignedOverflow = false;
-    break;
-
-  case Intrinsic::ssub_with_overflow:
+  case Instruction::Sub:
     Operation = &ScalarEvolution::getMinusSCEV;
-    Extension = &ScalarEvolution::getSignExtendExpr;
-    RawOp = Instruction::Sub;
-    NoSignedOverflow = true;
     break;
-
-  case Intrinsic::usub_with_overflow:
-    Operation = &ScalarEvolution::getMinusSCEV;
-    Extension = &ScalarEvolution::getZeroExtendExpr;
-    RawOp = Instruction::Sub;
-    NoSignedOverflow = false;
+  case Instruction::Mul:
+    Operation = &ScalarEvolution::getMulExpr;
     break;
   }
 
-  const SCEV *LHS = SE->getSCEV(CI->getArgOperand(0));
-  const SCEV *RHS = SE->getSCEV(CI->getArgOperand(1));
+  const SCEV *(ScalarEvolution::*Extension)(const SCEV *, Type *, unsigned) =
+      Signed ? &ScalarEvolution::getSignExtendExpr
+             : &ScalarEvolution::getZeroExtendExpr;
 
+  // Check ext(LHS op RHS) == ext(LHS) op ext(RHS)
   auto *NarrowTy = cast<IntegerType>(LHS->getType());
   auto *WideTy =
     IntegerType::get(NarrowTy->getContext(), NarrowTy->getBitWidth() * 2);
@@ -456,27 +435,32 @@ bool SimplifyIndvar::eliminateOverflowIntrinsic(CallInst *CI) {
   const SCEV *B =
       (SE->*Operation)((SE->*Extension)(LHS, WideTy, 0),
                        (SE->*Extension)(RHS, WideTy, 0), SCEV::FlagAnyWrap, 0);
+  return A == B;
+}
 
-  if (A != B)
+bool SimplifyIndvar::eliminateOverflowIntrinsic(WithOverflowInst *WO) {
+  const SCEV *LHS = SE->getSCEV(WO->getLHS());
+  const SCEV *RHS = SE->getSCEV(WO->getRHS());
+  if (!willNotOverflow(SE, WO->getBinaryOp(), WO->isSigned(), LHS, RHS))
     return false;
 
   // Proved no overflow, nuke the overflow check and, if possible, the overflow
   // intrinsic as well.
 
   BinaryOperator *NewResult = BinaryOperator::Create(
-      RawOp, CI->getArgOperand(0), CI->getArgOperand(1), "", CI);
+      WO->getBinaryOp(), WO->getLHS(), WO->getRHS(), "", WO);
 
-  if (NoSignedOverflow)
+  if (WO->isSigned())
     NewResult->setHasNoSignedWrap(true);
   else
     NewResult->setHasNoUnsignedWrap(true);
 
   SmallVector<ExtractValueInst *, 4> ToDelete;
 
-  for (auto *U : CI->users()) {
+  for (auto *U : WO->users()) {
     if (auto *EVI = dyn_cast<ExtractValueInst>(U)) {
       if (EVI->getIndices()[0] == 1)
-        EVI->replaceAllUsesWith(ConstantInt::getFalse(CI->getContext()));
+        EVI->replaceAllUsesWith(ConstantInt::getFalse(WO->getContext()));
       else {
         assert(EVI->getIndices()[0] == 0 && "Only two possibilities!");
         EVI->replaceAllUsesWith(NewResult);
@@ -488,9 +472,141 @@ bool SimplifyIndvar::eliminateOverflowIntrinsic(CallInst *CI) {
   for (auto *EVI : ToDelete)
     EVI->eraseFromParent();
 
-  if (CI->use_empty())
-    CI->eraseFromParent();
+  if (WO->use_empty())
+    WO->eraseFromParent();
 
+  return true;
+}
+
+bool SimplifyIndvar::eliminateSaturatingIntrinsic(SaturatingInst *SI) {
+  const SCEV *LHS = SE->getSCEV(SI->getLHS());
+  const SCEV *RHS = SE->getSCEV(SI->getRHS());
+  if (!willNotOverflow(SE, SI->getBinaryOp(), SI->isSigned(), LHS, RHS))
+    return false;
+
+  BinaryOperator *BO = BinaryOperator::Create(
+      SI->getBinaryOp(), SI->getLHS(), SI->getRHS(), SI->getName(), SI);
+  if (SI->isSigned())
+    BO->setHasNoSignedWrap();
+  else
+    BO->setHasNoUnsignedWrap();
+
+  SI->replaceAllUsesWith(BO);
+  DeadInsts.emplace_back(SI);
+  Changed = true;
+  return true;
+}
+
+bool SimplifyIndvar::eliminateTrunc(TruncInst *TI) {
+  // It is always legal to replace
+  //   icmp <pred> i32 trunc(iv), n
+  // with
+  //   icmp <pred> i64 sext(trunc(iv)), sext(n), if pred is signed predicate.
+  // Or with
+  //   icmp <pred> i64 zext(trunc(iv)), zext(n), if pred is unsigned predicate.
+  // Or with either of these if pred is an equality predicate.
+  //
+  // If we can prove that iv == sext(trunc(iv)) or iv == zext(trunc(iv)) for
+  // every comparison which uses trunc, it means that we can replace each of
+  // them with comparison of iv against sext/zext(n). We no longer need trunc
+  // after that.
+  //
+  // TODO: Should we do this if we can widen *some* comparisons, but not all
+  // of them? Sometimes it is enough to enable other optimizations, but the
+  // trunc instruction will stay in the loop.
+  Value *IV = TI->getOperand(0);
+  Type *IVTy = IV->getType();
+  const SCEV *IVSCEV = SE->getSCEV(IV);
+  const SCEV *TISCEV = SE->getSCEV(TI);
+
+  // Check if iv == zext(trunc(iv)) and if iv == sext(trunc(iv)). If so, we can
+  // get rid of trunc
+  bool DoesSExtCollapse = false;
+  bool DoesZExtCollapse = false;
+  if (IVSCEV == SE->getSignExtendExpr(TISCEV, IVTy))
+    DoesSExtCollapse = true;
+  if (IVSCEV == SE->getZeroExtendExpr(TISCEV, IVTy))
+    DoesZExtCollapse = true;
+
+  // If neither sext nor zext does collapse, it is not profitable to do any
+  // transform. Bail.
+  if (!DoesSExtCollapse && !DoesZExtCollapse)
+    return false;
+
+  // Collect users of the trunc that look like comparisons against invariants.
+  // Bail if we find something different.
+  SmallVector<ICmpInst *, 4> ICmpUsers;
+  for (auto *U : TI->users()) {
+    // We don't care about users in unreachable blocks.
+    if (isa<Instruction>(U) &&
+        !DT->isReachableFromEntry(cast<Instruction>(U)->getParent()))
+      continue;
+    ICmpInst *ICI = dyn_cast<ICmpInst>(U);
+    if (!ICI) return false;
+    assert(L->contains(ICI->getParent()) && "LCSSA form broken?");
+    if (!(ICI->getOperand(0) == TI && L->isLoopInvariant(ICI->getOperand(1))) &&
+        !(ICI->getOperand(1) == TI && L->isLoopInvariant(ICI->getOperand(0))))
+      return false;
+    // If we cannot get rid of trunc, bail.
+    if (ICI->isSigned() && !DoesSExtCollapse)
+      return false;
+    if (ICI->isUnsigned() && !DoesZExtCollapse)
+      return false;
+    // For equality, either signed or unsigned works.
+    ICmpUsers.push_back(ICI);
+  }
+
+  auto CanUseZExt = [&](ICmpInst *ICI) {
+    // Unsigned comparison can be widened as unsigned.
+    if (ICI->isUnsigned())
+      return true;
+    // Is it profitable to do zext?
+    if (!DoesZExtCollapse)
+      return false;
+    // For equality, we can safely zext both parts.
+    if (ICI->isEquality())
+      return true;
+    // Otherwise we can only use zext when comparing two non-negative or two
+    // negative values. But in practice, we will never pass DoesZExtCollapse
+    // check for a negative value, because zext(trunc(x)) is non-negative. So
+    // it only make sense to check for non-negativity here.
+    const SCEV *SCEVOP1 = SE->getSCEV(ICI->getOperand(0));
+    const SCEV *SCEVOP2 = SE->getSCEV(ICI->getOperand(1));
+    return SE->isKnownNonNegative(SCEVOP1) && SE->isKnownNonNegative(SCEVOP2);
+  };
+  // Replace all comparisons against trunc with comparisons against IV.
+  for (auto *ICI : ICmpUsers) {
+    bool IsSwapped = L->isLoopInvariant(ICI->getOperand(0));
+    auto *Op1 = IsSwapped ? ICI->getOperand(0) : ICI->getOperand(1);
+    Instruction *Ext = nullptr;
+    // For signed/unsigned predicate, replace the old comparison with comparison
+    // of immediate IV against sext/zext of the invariant argument. If we can
+    // use either sext or zext (i.e. we are dealing with equality predicate),
+    // then prefer zext as a more canonical form.
+    // TODO: If we see a signed comparison which can be turned into unsigned,
+    // we can do it here for canonicalization purposes.
+    ICmpInst::Predicate Pred = ICI->getPredicate();
+    if (IsSwapped) Pred = ICmpInst::getSwappedPredicate(Pred);
+    if (CanUseZExt(ICI)) {
+      assert(DoesZExtCollapse && "Unprofitable zext?");
+      Ext = new ZExtInst(Op1, IVTy, "zext", ICI);
+      Pred = ICmpInst::getUnsignedPredicate(Pred);
+    } else {
+      assert(DoesSExtCollapse && "Unprofitable sext?");
+      Ext = new SExtInst(Op1, IVTy, "sext", ICI);
+      assert(Pred == ICmpInst::getSignedPredicate(Pred) && "Must be signed!");
+    }
+    bool Changed;
+    L->makeLoopInvariant(Ext, Changed);
+    (void)Changed;
+    ICmpInst *NewICI = new ICmpInst(ICI, Pred, IV, Ext);
+    ICI->replaceAllUsesWith(NewICI);
+    DeadInsts.emplace_back(ICI);
+  }
+
+  // Trunc no longer needed.
+  TI->replaceAllUsesWith(UndefValue::get(TI->getType()));
+  DeadInsts.emplace_back(TI);
   return true;
 }
 
@@ -514,8 +630,16 @@ bool SimplifyIndvar::eliminateIVUser(Instruction *UseInst,
       return eliminateSDiv(Bin);
   }
 
-  if (auto *CI = dyn_cast<CallInst>(UseInst))
-    if (eliminateOverflowIntrinsic(CI))
+  if (auto *WO = dyn_cast<WithOverflowInst>(UseInst))
+    if (eliminateOverflowIntrinsic(WO))
+      return true;
+
+  if (auto *SI = dyn_cast<SaturatingInst>(UseInst))
+    if (eliminateSaturatingIntrinsic(SI))
+      return true;
+
+  if (auto *TI = dyn_cast<TruncInst>(UseInst))
+    if (eliminateTrunc(TI))
       return true;
 
   if (eliminateIdentitySCEV(UseInst, IVOperand))
@@ -604,59 +728,31 @@ bool SimplifyIndvar::eliminateIdentitySCEV(Instruction *UseInst,
 /// unsigned-overflow.  Returns true if anything changed, false otherwise.
 bool SimplifyIndvar::strengthenOverflowingOperation(BinaryOperator *BO,
                                                     Value *IVOperand) {
-
   // Fastpath: we don't have any work to do if `BO` is `nuw` and `nsw`.
   if (BO->hasNoUnsignedWrap() && BO->hasNoSignedWrap())
     return false;
 
-  const SCEV *(ScalarEvolution::*GetExprForBO)(const SCEV *, const SCEV *,
-                                               SCEV::NoWrapFlags, unsigned);
-  switch (BO->getOpcode()) {
-  default:
+  if (BO->getOpcode() != Instruction::Add &&
+      BO->getOpcode() != Instruction::Sub &&
+      BO->getOpcode() != Instruction::Mul)
     return false;
 
-  case Instruction::Add:
-    GetExprForBO = &ScalarEvolution::getAddExpr;
-    break;
-
-  case Instruction::Sub:
-    GetExprForBO = &ScalarEvolution::getMinusSCEV;
-    break;
-
-  case Instruction::Mul:
-    GetExprForBO = &ScalarEvolution::getMulExpr;
-    break;
-  }
-
-  unsigned BitWidth = cast<IntegerType>(BO->getType())->getBitWidth();
-  Type *WideTy = IntegerType::get(BO->getContext(), BitWidth * 2);
   const SCEV *LHS = SE->getSCEV(BO->getOperand(0));
   const SCEV *RHS = SE->getSCEV(BO->getOperand(1));
-
   bool Changed = false;
 
-  if (!BO->hasNoUnsignedWrap()) {
-    const SCEV *ExtendAfterOp = SE->getZeroExtendExpr(SE->getSCEV(BO), WideTy);
-    const SCEV *OpAfterExtend = (SE->*GetExprForBO)(
-      SE->getZeroExtendExpr(LHS, WideTy), SE->getZeroExtendExpr(RHS, WideTy),
-      SCEV::FlagAnyWrap, 0u);
-    if (ExtendAfterOp == OpAfterExtend) {
-      BO->setHasNoUnsignedWrap();
-      SE->forgetValue(BO);
-      Changed = true;
-    }
+  if (!BO->hasNoUnsignedWrap() &&
+      willNotOverflow(SE, BO->getOpcode(), /* Signed */ false, LHS, RHS)) {
+    BO->setHasNoUnsignedWrap();
+    SE->forgetValue(BO);
+    Changed = true;
   }
 
-  if (!BO->hasNoSignedWrap()) {
-    const SCEV *ExtendAfterOp = SE->getSignExtendExpr(SE->getSCEV(BO), WideTy);
-    const SCEV *OpAfterExtend = (SE->*GetExprForBO)(
-      SE->getSignExtendExpr(LHS, WideTy), SE->getSignExtendExpr(RHS, WideTy),
-      SCEV::FlagAnyWrap, 0u);
-    if (ExtendAfterOp == OpAfterExtend) {
-      BO->setHasNoSignedWrap();
-      SE->forgetValue(BO);
-      Changed = true;
-    }
+  if (!BO->hasNoSignedWrap() &&
+      willNotOverflow(SE, BO->getOpcode(), /* Signed */ true, LHS, RHS)) {
+    BO->setHasNoSignedWrap();
+    SE->forgetValue(BO);
+    Changed = true;
   }
 
   return Changed;

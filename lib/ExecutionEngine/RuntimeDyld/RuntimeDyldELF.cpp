@@ -1,9 +1,8 @@
 //===-- RuntimeDyldELF.cpp - Run-time dynamic linker for MC-JIT -*- C++ -*-===//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
@@ -255,7 +254,7 @@ RuntimeDyldELF::loadObject(const object::ObjectFile &O) {
   else {
     HasError = true;
     raw_string_ostream ErrStream(ErrorStr);
-    logAllUnhandledErrors(ObjSectionToIDOrErr.takeError(), ErrStream, "");
+    logAllUnhandledErrors(ObjSectionToIDOrErr.takeError(), ErrStream);
     return nullptr;
   }
 }
@@ -312,6 +311,22 @@ void RuntimeDyldELF::resolveX86_64Relocation(const SectionEntry &Section,
     int64_t RealOffset = Value + Addend - FinalAddress;
     support::ulittle64_t::ref(Section.getAddressWithOffset(Offset)) =
         RealOffset;
+    LLVM_DEBUG(dbgs() << "Writing " << format("%p", RealOffset) << " at "
+                      << format("%p\n", FinalAddress));
+    break;
+  }
+  case ELF::R_X86_64_GOTOFF64: {
+    // Compute Value - GOTBase.
+    uint64_t GOTBase = 0;
+    for (const auto &Section : Sections) {
+      if (Section.getName() == ".got") {
+        GOTBase = Section.getLoadAddressWithOffset(0);
+        break;
+      }
+    }
+    assert(GOTBase != 0 && "missing GOT");
+    int64_t GOTOffset = Value - GOTBase + Addend;
+    support::ulittle64_t::ref(Section.getAddressWithOffset(Offset)) = GOTOffset;
     break;
   }
   }
@@ -723,9 +738,11 @@ void RuntimeDyldELF::resolvePPC64Relocation(const SectionEntry &Section,
     writeInt16BE(LocalAddress, applyPPClo(Value + Addend) & ~3);
     break;
   case ELF::R_PPC64_ADDR16_HI:
+  case ELF::R_PPC64_ADDR16_HIGH:
     writeInt16BE(LocalAddress, applyPPChi(Value + Addend));
     break;
   case ELF::R_PPC64_ADDR16_HA:
+  case ELF::R_PPC64_ADDR16_HIGHA:
     writeInt16BE(LocalAddress, applyPPCha(Value + Addend));
     break;
   case ELF::R_PPC64_ADDR16_HIGHER:
@@ -1112,7 +1129,7 @@ RuntimeDyldELF::processRelocationRef(
     if (!SymTypeOrErr) {
       std::string Buf;
       raw_string_ostream OS(Buf);
-      logAllUnhandledErrors(SymTypeOrErr.takeError(), OS, "");
+      logAllUnhandledErrors(SymTypeOrErr.takeError(), OS);
       OS.flush();
       report_fatal_error(Buf);
     }
@@ -1133,7 +1150,7 @@ RuntimeDyldELF::processRelocationRef(
       if (!SectionOrErr) {
         std::string Buf;
         raw_string_ostream OS(Buf);
-        logAllUnhandledErrors(SectionOrErr.takeError(), OS, "");
+        logAllUnhandledErrors(SectionOrErr.takeError(), OS);
         OS.flush();
         report_fatal_error(Buf);
       }
@@ -1412,7 +1429,7 @@ RuntimeDyldELF::processRelocationRef(
     } else {
       processSimpleRelocation(SectionID, Offset, RelType, Value);
     }
-  
+
   } else if (Arch == Triple::ppc64 || Arch == Triple::ppc64le) {
     if (RelType == ELF::R_PPC64_REL24) {
       // Determine ABI variant in use for this object.
@@ -1698,6 +1715,29 @@ RuntimeDyldELF::processRelocationRef(
         addRelocationForSymbol(RE, Value.SymbolName);
       else
         addRelocationForSection(RE, Value.SectionID);
+    } else if (RelType == ELF::R_X86_64_GOT64) {
+      // Fill in a 64-bit GOT offset.
+      uint64_t GOTOffset = allocateGOTEntries(1);
+      resolveRelocation(Sections[SectionID], Offset, GOTOffset,
+                        ELF::R_X86_64_64, 0);
+
+      // Fill in the value of the symbol we're targeting into the GOT
+      RelocationEntry RE =
+          computeGOTOffsetRE(GOTOffset, Value.Offset, ELF::R_X86_64_64);
+      if (Value.SymbolName)
+        addRelocationForSymbol(RE, Value.SymbolName);
+      else
+        addRelocationForSection(RE, Value.SectionID);
+    } else if (RelType == ELF::R_X86_64_GOTPC64) {
+      // Materialize the address of the base of the GOT relative to the PC.
+      // This doesn't create a GOT entry, but it does mean we need a GOT
+      // section.
+      (void)allocateGOTEntries(0);
+      resolveGOTOffsetRelocation(SectionID, Offset, Addend, ELF::R_X86_64_PC64);
+    } else if (RelType == ELF::R_X86_64_GOTOFF64) {
+      // GOTOFF relocations ultimately require a section difference relocation.
+      (void)allocateGOTEntries(0);
+      processSimpleRelocation(SectionID, Offset, RelType, Value);
     } else if (RelType == ELF::R_X86_64_PC32) {
       Value.Addend += support::ulittle32_t::ref(computePlaceholderAddress(SectionID, Offset));
       processSimpleRelocation(SectionID, Offset, RelType, Value);
@@ -1816,9 +1856,6 @@ Error RuntimeDyldELF::finalizeLoad(const ObjectFile &Obj,
     Sections[GOTSectionID] =
         SectionEntry(".got", Addr, TotalSize, TotalSize, 0);
 
-    if (Checker)
-      Checker->registerSection(Obj.getFileName(), GOTSectionID);
-
     // For now, initialize all GOT entries to zero.  We'll fill them in as
     // needed when GOT-based relocations are applied.
     memset(Addr, 0, TotalSize);
@@ -1869,6 +1906,7 @@ bool RuntimeDyldELF::relocationNeedsGot(const RelocationRef &R) const {
   if (Arch == Triple::x86_64)
     return RelTy == ELF::R_X86_64_GOTPCREL ||
            RelTy == ELF::R_X86_64_GOTPCRELX ||
+           RelTy == ELF::R_X86_64_GOT64 ||
            RelTy == ELF::R_X86_64_REX_GOTPCRELX;
   return false;
 }
@@ -1885,6 +1923,9 @@ bool RuntimeDyldELF::relocationNeedsStub(const RelocationRef &R) const {
   case ELF::R_X86_64_GOTPCREL:
   case ELF::R_X86_64_GOTPCRELX:
   case ELF::R_X86_64_REX_GOTPCRELX:
+  case ELF::R_X86_64_GOTPC64:
+  case ELF::R_X86_64_GOT64:
+  case ELF::R_X86_64_GOTOFF64:
   case ELF::R_X86_64_PC32:
   case ELF::R_X86_64_PC64:
   case ELF::R_X86_64_64:

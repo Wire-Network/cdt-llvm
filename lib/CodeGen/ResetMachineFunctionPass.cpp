@@ -1,9 +1,8 @@
 //===-- ResetMachineFunctionPass.cpp - Reset Machine Function ----*- C++ -*-==//
 //
-//                     The LLVM Compiler Infrastructure
-//
-// This file is distributed under the University of Illinois Open Source
-// License. See LICENSE.TXT for details.
+// Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 /// \file
@@ -18,6 +17,7 @@
 #include "llvm/CodeGen/MachineFunction.h"
 #include "llvm/CodeGen/MachineFunctionPass.h"
 #include "llvm/CodeGen/MachineRegisterInfo.h"
+#include "llvm/CodeGen/StackProtector.h"
 #include "llvm/CodeGen/Passes.h"
 #include "llvm/IR/DiagnosticInfo.h"
 #include "llvm/Support/Debug.h"
@@ -26,6 +26,7 @@ using namespace llvm;
 #define DEBUG_TYPE "reset-machine-function"
 
 STATISTIC(NumFunctionsReset, "Number of functions reset");
+STATISTIC(NumFunctionsVisited, "Number of functions visited");
 
 namespace {
   class ResetMachineFunction : public MachineFunctionPass {
@@ -44,7 +45,13 @@ namespace {
 
     StringRef getPassName() const override { return "ResetMachineFunction"; }
 
+    void getAnalysisUsage(AnalysisUsage &AU) const override {
+      AU.addPreserved<StackProtector>();
+      MachineFunctionPass::getAnalysisUsage(AU);
+    }
+
     bool runOnMachineFunction(MachineFunction &MF) override {
+      ++NumFunctionsVisited;
       // No matter what happened, whether we successfully selected the function
       // or not, nothing is going to use the vreg types after us. Make sure they
       // disappear.
