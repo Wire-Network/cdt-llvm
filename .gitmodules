@@ -1,7 +1,6 @@
 [submodule "tools/clang"]
 	path = tools/clang
 	url = https://github.com/eosio/clang.git
-	branch = qy-read-only-action
 [submodule "tools/lld"]
 	path = tools/lld
 	url = https://github.com/eosio/lld.git
