@@ -1,6 +1,6 @@
 [submodule "tools/clang"]
 	path = tools/clang
-	url = https://github.com/eosio/clang.git
+	url = https://github.com/eosnetworkfoundation/cdt-clang
 [submodule "tools/lld"]
 	path = tools/lld
-	url = https://github.com/eosio/lld.git
+	url = https://github.com/eosnetworkfoundation/cdt-lld
