@@ -641,17 +641,11 @@ option(LLVM_ENABLE_PLUGINS "Enable plugin support" ${LLVM_ENABLE_PLUGINS_default
 
 include(HandleLLVMOptions)
 
-include(FindPythonInterp)
-if( NOT PYTHONINTERP_FOUND )
-  message(FATAL_ERROR
-"Unable to find Python interpreter, required for builds and testing.
-
-Please install Python or specify the PYTHON_EXECUTABLE CMake variable.")
-endif()
-
-if( ${PYTHON_VERSION_STRING} VERSION_LESS 2.7 )
+find_package(Python COMPONENTS Interpreter REQUIRED)
+if(Python_VERSION VERSION_LESS 2.7)
   message(FATAL_ERROR "Python 2.7 or newer is required")
 endif()
+set(PYTHON_EXECUTABLE "${Python_EXECUTABLE}")
 
 ######
 # LLVMBuild Integration
