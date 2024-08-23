@@ -28,7 +28,7 @@
 
 using namespace llvm;
 
-#define DEBUG_TYPE "eosio_apply"
+#define DEBUG_TYPE "sysio_apply"
 static cl::opt<std::string> entry_opt (
    "entry",
    cl::desc("Specify entry point")
@@ -40,14 +40,14 @@ namespace {
     static char ID;
     EosioApplyPass() : FunctionPass(ID) {}
     bool runOnFunction(Function &F) override {
-       if (F.hasFnAttribute("eosio_wasm_entry") || F.getName().equals("apply")) {
+       if (F.hasFnAttribute("sysio_wasm_entry") || F.getName().equals("apply")) {
          auto wasm_ctors = F.getParent()->getOrInsertFunction("__wasm_call_ctors", AttributeList{}, Type::getVoidTy(F.getContext()));
          auto wasm_dtors = F.getParent()->getOrInsertFunction("__cxa_finalize", AttributeList{}, Type::getVoidTy(F.getContext()), Type::getInt32Ty(F.getContext()));
 
          IRBuilder<> builder(&F.getEntryBlock());
          builder.SetInsertPoint(&(F.getEntryBlock().front()));
 
-         auto set_contract = F.getParent()->getOrInsertFunction("eosio_set_contract_name", AttributeList{}, Type::getVoidTy(F.getContext()), Type::getInt64Ty(F.getContext()));
+         auto set_contract = F.getParent()->getOrInsertFunction("sysio_set_contract_name", AttributeList{}, Type::getVoidTy(F.getContext()), Type::getInt64Ty(F.getContext()));
 
          CallInst* set_contract_call = builder.CreateCall(set_contract, {F.arg_begin()}, "");
          if (const Function* F_ = dyn_cast<const Function>(set_contract.getCallee()->stripPointerCasts()))

@@ -326,10 +326,10 @@ Error WasmObjectFile::parseSection(WasmSection &Sec) {
 
 Error WasmObjectFile::parseEosioABISection(ReadContext& Ctx) {
    StringRef sr = readString(Ctx);
-   eosio_abi = sr;
+   sysio_abi = sr;
 
    if (Ctx.Ptr != Ctx.End)
-      return make_error<GenericBinaryError>("eosio abi section ended prematurely",
+      return make_error<GenericBinaryError>("sysio abi section ended prematurely",
                                           object_error::parse_failed);
    return Error::success();
 
@@ -892,13 +892,13 @@ Error WasmObjectFile::parseCustomSection(WasmSection &Sec, ReadContext &Ctx) {
   if (Sec.Name == ".imports") {
      if (Error Err = parseAllowedSection(Ctx))
         return Err;
-  } else if (Sec.Name == ".eosio_abi") {
+  } else if (Sec.Name == ".sysio_abi") {
      if (Error Err = parseEosioABISection(Ctx))
         return Err;
-  } else if (Sec.Name == ".eosio_actions") {
+  } else if (Sec.Name == ".sysio_actions") {
      if (Error Err = parseActionsSection(Ctx))
         return Err;
-  } else if (Sec.Name == ".eosio_notify") {
+  } else if (Sec.Name == ".sysio_notify") {
      if (Error Err = parseNotifySection(Ctx))
         return Err;
   } else if (Sec.Name == "dylink") {

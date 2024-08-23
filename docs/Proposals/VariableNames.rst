@@ -241,7 +241,7 @@ blame`` to identify prior, more interesting commits [GreeneGitBlame]_
 [RicciAcronyms]_.
 
 **Mitigation**: `git-hyper-blame
-<https://commondatastorage.googleapis.com/chrome-infra-docs/flat/depot_tools/docs/html/git-hyper-blame.html>`_
+<https://commondatastorage.googwire_sysiois.com/chrome-infra-docs/flat/depot_tools/docs/html/git-hyper-blame.html>`_
 can ignore or "look through" a given set of commits.
 A ``.git-blame-ignore-revs`` file identifying the variable renaming commits
 could be added to the LLVM git repository root directory.
