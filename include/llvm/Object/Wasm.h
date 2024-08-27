@@ -151,7 +151,7 @@ public:
   ArrayRef<StringRef> allowed_imports() const { return AllowedImports; }
   ArrayRef<StringRef> actions() const { return Actions; }
   ArrayRef<StringRef> notify() const { return Notify; }
-  StringRef get_eosio_abi() const { return eosio_abi; }
+  StringRef get_sysio_abi() const { return sysio_abi; }
   uint32_t startFunction() const { return StartFunction; }
   uint32_t getNumImportedGlobals() const { return NumImportedGlobals; }
   uint32_t getNumImportedFunctions() const { return NumImportedFunctions; }
@@ -264,7 +264,7 @@ private:
   Error parseProducersSection(ReadContext &Ctx);
   Error parseTargetFeaturesSection(ReadContext &Ctx);
   Error parseRelocSection(StringRef Name, ReadContext &Ctx);
-  Error parseEosioABISection(ReadContext &Ctx);
+  Error parseSysioABISection(ReadContext &Ctx);
 
   wasm::WasmObjectHeader Header;
   std::vector<WasmSection> Sections;
@@ -288,7 +288,7 @@ private:
   std::vector<wasm::WasmFunction> Functions;
   std::vector<WasmSymbol> Symbols;
   std::vector<wasm::WasmFunctionName> DebugNames;
-  StringRef eosio_abi;
+  StringRef sysio_abi;
   uint32_t StartFunction = -1;
   bool HasLinkingSection = false;
   bool HasDylinkSection = false;
