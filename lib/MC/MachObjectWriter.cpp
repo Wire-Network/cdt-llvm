@@ -742,7 +742,7 @@ bool MachObjectWriter::isSymbolRefDifferenceFullyResolvedImpl(
 static MachO::LoadCommandType getLCFromMCVM(MCVersionMinType Type) {
   switch (Type) {
   case MCVM_OSXVersionMin:     return MachO::LC_VERSION_MIN_MACOSX;
-  case MCVM_IOSVersionMin:     return MachO::LC_VERSION_MIN_IPHONEOS;
+  case MCVM_IOSVersionMin:     return MachO::LC_VERSION_MIN_IPHONSYS;
   case MCVM_TvOSVersionMin:    return MachO::LC_VERSION_MIN_TVOS;
   case MCVM_WatchOSVersionMin: return MachO::LC_VERSION_MIN_WATCHOS;
   }

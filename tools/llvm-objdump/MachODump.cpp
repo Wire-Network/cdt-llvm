@@ -8957,8 +8957,8 @@ static void PrintVersionMinLoadCommand(MachO::version_min_command vd) {
   case MachO::LC_VERSION_MIN_MACOSX:
     LoadCmdName = "LC_VERSION_MIN_MACOSX";
     break;
-  case MachO::LC_VERSION_MIN_IPHONEOS:
-    LoadCmdName = "LC_VERSION_MIN_IPHONEOS";
+  case MachO::LC_VERSION_MIN_IPHONSYS:
+    LoadCmdName = "LC_VERSION_MIN_IPHONSYS";
     break;
   case MachO::LC_VERSION_MIN_TVOS:
     LoadCmdName = "LC_VERSION_MIN_TVOS";
@@ -9999,7 +9999,7 @@ static void PrintLoadCommands(const MachOObjectFile *Obj, uint32_t filetype,
       MachO::rpath_command Rpath = Obj->getRpathCommand(Command);
       PrintRpathLoadCommand(Rpath, Command.Ptr);
     } else if (Command.C.cmd == MachO::LC_VERSION_MIN_MACOSX ||
-               Command.C.cmd == MachO::LC_VERSION_MIN_IPHONEOS ||
+               Command.C.cmd == MachO::LC_VERSION_MIN_IPHONSYS ||
                Command.C.cmd == MachO::LC_VERSION_MIN_TVOS ||
                Command.C.cmd == MachO::LC_VERSION_MIN_WATCHOS) {
       MachO::version_min_command Vd = Obj->getVersionMinLoadCommand(Command);

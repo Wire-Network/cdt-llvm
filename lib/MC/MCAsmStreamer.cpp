@@ -541,7 +541,7 @@ static const char *getPlatformName(MachO::PlatformType Type) {
   case MachO::PLATFORM_IOS:              return "ios";
   case MachO::PLATFORM_TVOS:             return "tvos";
   case MachO::PLATFORM_WATCHOS:          return "watchos";
-  case MachO::PLATFORM_BRIDGEOS:         return "bridgeos";
+  case MachO::PLATFORM_BRIDGSYS:         return "bridgeos";
   case MachO::PLATFORM_MACCATALYST:      return "macCatalyst";
   case MachO::PLATFORM_IOSSIMULATOR:     return "iossimulator";
   case MachO::PLATFORM_TVOSSIMULATOR:    return "tvossimulator";

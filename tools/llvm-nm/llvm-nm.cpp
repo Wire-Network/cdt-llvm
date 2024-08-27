@@ -1248,7 +1248,7 @@ dumpSymbolNamesFromObject(SymbolicFile &Obj, bool printName,
   // language symbols for example.  The option -only-dyldinfo will fake up
   // all symbols from the dyld export trie as well as the bind info.
   std::string ExportsNameBuffer;
-  raw_string_ostream EOS(ExportsNameBuffer);
+  raw_string_ostream SYS(ExportsNameBuffer);
   std::string BindsNameBuffer;
   raw_string_ostream BOS(BindsNameBuffer);
   std::string LazysNameBuffer;
@@ -1372,8 +1372,8 @@ dumpSymbolNamesFromObject(SymbolicFile &Obj, bool printName,
           }
           SymbolList.push_back(S);
 
-          EOS << Entry.name();
-          EOS << '\0';
+          SYS << Entry.name();
+          SYS << '\0';
           ExportsAdded++;
 
           // For ReExports there are a two more things to do, first add the
@@ -1383,10 +1383,10 @@ dumpSymbolNamesFromObject(SymbolicFile &Obj, bool printName,
 
             // Add the indirect name.
             if (Entry.otherName().empty())
-              EOS << Entry.name();
+              SYS << Entry.name();
             else
-              EOS << Entry.otherName();
-            EOS << '\0';
+              SYS << Entry.otherName();
+            SYS << '\0';
 
             // Now create the undefined symbol using the referened dynamic
             // library.
@@ -1415,10 +1415,10 @@ dumpSymbolNamesFromObject(SymbolicFile &Obj, bool printName,
 
             // Finally add the undefined symbol's name.
             if (Entry.otherName().empty())
-              EOS << Entry.name();
+              SYS << Entry.name();
             else
-              EOS << Entry.otherName();
-            EOS << '\0';
+              SYS << Entry.otherName();
+            SYS << '\0';
             ExportsAdded++;
           }
         }
@@ -1427,7 +1427,7 @@ dumpSymbolNamesFromObject(SymbolicFile &Obj, bool printName,
         error(std::move(Err), MachO->getFileName());
       // Set the symbol names and indirect names for the added symbols.
       if (ExportsAdded) {
-        EOS.flush();
+        SYS.flush();
         const char *Q = ExportsNameBuffer.c_str();
         for (unsigned K = 0; K < ExportsAdded; K++) {
           SymbolList[I].Name = Q;

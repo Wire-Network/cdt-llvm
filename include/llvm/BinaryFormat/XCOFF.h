@@ -129,7 +129,7 @@ enum StorageClass : uint8_t {
   C_MOE = 16,     // Member of enumeration
   C_REGPARM = 17, // Register parameter
   C_FIELD = 18,   // Bit field
-  C_EOS = 102,    // End of structure
+  C_SYS = 102,    // End of structure
   C_LINE = 104,
   C_ALIAS = 105,  // Duplicate tag
   C_HIDDEN = 106, // Special storage class for external

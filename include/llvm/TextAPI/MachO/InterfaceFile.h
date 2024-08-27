@@ -38,7 +38,7 @@ enum class PlatformKind : unsigned {
   iOS = MachO::PLATFORM_IOS,
   tvOS = MachO::PLATFORM_TVOS,
   watchOS = MachO::PLATFORM_WATCHOS,
-  bridgeOS = MachO::PLATFORM_BRIDGEOS,
+  bridgeOS = MachO::PLATFORM_BRIDGSYS,
 };
 
 /// Defines a list of Objective-C constraints.

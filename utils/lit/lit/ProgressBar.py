@@ -54,7 +54,7 @@ class TerminalController:
     CLEAR_SCREEN = ''    #: Clear the screen and move to home position
     CLEAR_EOL = ''       #: Clear to the end of the line.
     CLEAR_BOL = ''       #: Clear to the beginning of the line.
-    CLEAR_EOS = ''       #: Clear to the end of the screen
+    CLEAR_SYS = ''       #: Clear to the end of the screen
 
     # Output modes:
     BOLD = ''            #: Turn on bold mode
@@ -80,7 +80,7 @@ class TerminalController:
     
     _STRING_CAPABILITIES = """
     BOL=cr UP=cuu1 DOWN=cud1 LEFT=cub1 RIGHT=cuf1
-    CLEAR_SCREEN=clear CLEAR_EOL=el CLEAR_BOL=el1 CLEAR_EOS=ed BOLD=bold
+    CLEAR_SCREEN=clear CLEAR_EOL=el CLEAR_BOL=el1 CLEAR_SYS=ed BOLD=bold
     BLINK=blink DIM=dim REVERSE=rev UNDERLINE=smul NORMAL=sgr0
     HIDE_CURSOR=cinvis SHOW_CURSOR=cnorm""".split()
     _COLORS = """BLACK BLUE GREEN CYAN RED MAGENTA YELLOW WHITE""".split()
