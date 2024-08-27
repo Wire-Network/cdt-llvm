@@ -1,4 +1,4 @@
-//===- EosioApply ---------------===//
+//===- SysioApply ---------------===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -35,10 +35,10 @@ static cl::opt<std::string> entry_opt (
 );
 
 namespace {
-  // EosioApply - Mutate the apply function as needed
-  struct EosioApplyPass : public FunctionPass {
+  // SysioApply - Mutate the apply function as needed
+  struct SysioApplyPass : public FunctionPass {
     static char ID;
-    EosioApplyPass() : FunctionPass(ID) {}
+    SysioApplyPass() : FunctionPass(ID) {}
     bool runOnFunction(Function &F) override {
        if (F.hasFnAttribute("sysio_wasm_entry") || F.getName().equals("apply")) {
          auto wasm_ctors = F.getParent()->getOrInsertFunction("__wasm_call_ctors", AttributeList{}, Type::getVoidTy(F.getContext()));
@@ -74,8 +74,8 @@ namespace {
   };
 }
 
-char EosioApplyPass::ID = 0;
-static RegisterPass<EosioApplyPass> X("apply_fixup", "Eosio Apply Fixups");
+char SysioApplyPass::ID = 0;
+static RegisterPass<SysioApplyPass> X("apply_fixup", "Sysio Apply Fixups");
 
-static void registerEosioApplyPass(const PassManagerBuilder&, legacy::PassManagerBase& PM) { PM.add(new EosioApplyPass()); }
-static RegisterStandardPasses RegisterMyPass(PassManagerBuilder::EP_EarlyAsPossible, registerEosioApplyPass);
+static void registerSysioApplyPass(const PassManagerBuilder&, legacy::PassManagerBase& PM) { PM.add(new SysioApplyPass()); }
+static RegisterStandardPasses RegisterMyPass(PassManagerBuilder::EP_EarlyAsPossible, registerSysioApplyPass);

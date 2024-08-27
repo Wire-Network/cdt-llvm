@@ -261,7 +261,7 @@ def : MergeRule<"adjustCallerSSPLevel">;
 def : MergeRule<"adjustCallerStackProbes">;
 def : MergeRule<"adjustCallerStackProbeSize">;
 
-def EosioWasmEntry  : EnumAttr<"sysio_wasm_entry">;
-def EosioWasmImport : EnumAttr<"sysio_wasm_import">;
+def SysioWasmEntry  : EnumAttr<"sysio_wasm_entry">;
+def SysioWasmImport : EnumAttr<"sysio_wasm_import">;
 def : MergeRule<"adjustMinLegalVectorWidth">;
 def : MergeRule<"adjustNullPointerValidAttr">;

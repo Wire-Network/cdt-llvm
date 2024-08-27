@@ -324,7 +324,7 @@ Error WasmObjectFile::parseSection(WasmSection &Sec) {
   }
 }
 
-Error WasmObjectFile::parseEosioABISection(ReadContext& Ctx) {
+Error WasmObjectFile::parseSysioABISection(ReadContext& Ctx) {
    StringRef sr = readString(Ctx);
    sysio_abi = sr;
 
@@ -893,7 +893,7 @@ Error WasmObjectFile::parseCustomSection(WasmSection &Sec, ReadContext &Ctx) {
      if (Error Err = parseAllowedSection(Ctx))
         return Err;
   } else if (Sec.Name == ".sysio_abi") {
-     if (Error Err = parseEosioABISection(Ctx))
+     if (Error Err = parseSysioABISection(Ctx))
         return Err;
   } else if (Sec.Name == ".sysio_actions") {
      if (Error Err = parseActionsSection(Ctx))

@@ -264,7 +264,7 @@ private:
   Error parseProducersSection(ReadContext &Ctx);
   Error parseTargetFeaturesSection(ReadContext &Ctx);
   Error parseRelocSection(StringRef Name, ReadContext &Ctx);
-  Error parseEosioABISection(ReadContext &Ctx);
+  Error parseSysioABISection(ReadContext &Ctx);
 
   wasm::WasmObjectHeader Header;
   std::vector<WasmSection> Sections;

@@ -1,4 +1,4 @@
-//===- EosioSoftfloat ---------------===//
+//===- SysioSoftfloat ---------------===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -32,10 +32,10 @@ using namespace llvm;
 #define DEBUG_TYPE "sysio_softfloat"
 
 namespace {
-  // EosioSoftfloat - Mutate the apply function as needed
-  struct EosioSoftfloatPass : public FunctionPass {
+  // SysioSoftfloat - Mutate the apply function as needed
+  struct SysioSoftfloatPass : public FunctionPass {
     static char ID;
-    EosioSoftfloatPass() : FunctionPass(ID) {}
+    SysioSoftfloatPass() : FunctionPass(ID) {}
 
     bool runOnFunction(Function &f) override {
        auto  f32add = f.getParent()->getOrInsertFunction("_sysio_f32_add", AttributeList{},
@@ -147,8 +147,8 @@ namespace {
   };
 }
 
-char EosioSoftfloatPass::ID = 0;
-static RegisterPass<EosioSoftfloatPass> X("softfloat_fixup", "Eosio Softfloat Fixups");
+char SysioSoftfloatPass::ID = 0;
+static RegisterPass<SysioSoftfloatPass> X("softfloat_fixup", "Sysio Softfloat Fixups");
 
-static void registerEosioSoftfloatPass(const PassManagerBuilder&, legacy::PassManagerBase& PM) { PM.add(new EosioSoftfloatPass()); }
-static RegisterStandardPasses RegisterMyPass(PassManagerBuilder::EP_EarlyAsPossible, registerEosioSoftfloatPass);
+static void registerSysioSoftfloatPass(const PassManagerBuilder&, legacy::PassManagerBase& PM) { PM.add(new SysioSoftfloatPass()); }
+static RegisterStandardPasses RegisterMyPass(PassManagerBuilder::EP_EarlyAsPossible, registerSysioSoftfloatPass);
