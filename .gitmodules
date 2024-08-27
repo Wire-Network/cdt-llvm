@@ -1,6 +1,6 @@
 [submodule "tools/clang"]
 	path = tools/clang
-	url = https://github.com/Wire-Network/cdt-clang
+	url = ../cdt-clang
 [submodule "tools/lld"]
 	path = tools/lld
-	url = https://github.com/Wire-Network/cdt-lld
+	url = ../cdt-lld
