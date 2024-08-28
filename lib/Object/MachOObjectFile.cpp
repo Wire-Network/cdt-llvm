@@ -818,7 +818,7 @@ static Error checkVersCommand(const MachOObjectFile &Obj,
                           CmdName + " has incorrect cmdsize");
   if (*LoadCmd != nullptr)
     return malformedError("more than one LC_VERSION_MIN_MACOSX, "
-                          "LC_VERSION_MIN_IPHONEOS, LC_VERSION_MIN_TVOS or "
+                          "LC_VERSION_MIN_IPHONSYS, LC_VERSION_MIN_TVOS or "
                           "LC_VERSION_MIN_WATCHOS command");
   *LoadCmd = Load.Ptr;
   return Error::success();
@@ -1439,9 +1439,9 @@ MachOObjectFile::MachOObjectFile(MemoryBufferRef Object, bool IsLittleEndian,
       if ((Err = checkVersCommand(*this, Load, I, &VersLoadCmd,
                                   "LC_VERSION_MIN_MACOSX")))
         return;
-    } else if (Load.C.cmd == MachO::LC_VERSION_MIN_IPHONEOS) {
+    } else if (Load.C.cmd == MachO::LC_VERSION_MIN_IPHONSYS) {
       if ((Err = checkVersCommand(*this, Load, I, &VersLoadCmd,
-                                  "LC_VERSION_MIN_IPHONEOS")))
+                                  "LC_VERSION_MIN_IPHONSYS")))
         return;
     } else if (Load.C.cmd == MachO::LC_VERSION_MIN_TVOS) {
       if ((Err = checkVersCommand(*this, Load, I, &VersLoadCmd,

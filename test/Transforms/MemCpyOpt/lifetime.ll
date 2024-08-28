@@ -7,9 +7,9 @@ declare void @llvm.memcpy.p0i8.p0i8.i64(i8* nocapture, i8* nocapture readonly, i
 declare void @llvm.lifetime.start.p0i8(i64, i8* nocapture) #1
 declare void @llvm.lifetime.end.p0i8(i64, i8* nocapture) #1
 
-define void @_ZN4CordC2EOS_(i8* nocapture dereferenceable(16) %arg1) {
+define void @_ZN4CordC2SYS_(i8* nocapture dereferenceable(16) %arg1) {
 bb:
-; CHECK-LABEL: @_ZN4CordC2EOS_
+; CHECK-LABEL: @_ZN4CordC2SYS_
 ; CHECK-NOT: call void @llvm.lifetime.start
 ; CHECK: ret void
   %tmp = alloca [8 x i8], align 8

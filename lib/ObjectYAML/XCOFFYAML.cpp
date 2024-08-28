@@ -47,7 +47,7 @@ void ScalarEnumerationTraits<XCOFF::StorageClass>::enumeration(
   ECase(C_FIELD);
   ECase(C_BLOCK);
   ECase(C_FCN);
-  ECase(C_EOS);
+  ECase(C_SYS);
   ECase(C_FILE);
   ECase(C_LINE);
   ECase(C_ALIAS);

@@ -307,17 +307,17 @@ _ZN4llvm12SMDiagnosticC2ENS_9StringRefENS_9SourceMgr8DiagKindES1_.exit: ; preds 
   store %"struct.std::pair"* %22, %"struct.std::pair"** %_M_end_of_storage.i11.i.i.i, align 8, !tbaa !27
   store %"struct.std::pair"* null, %"struct.std::pair"** %_M_end_of_storage4.i.i.i.i, align 8, !tbaa !27
   %tobool.i.i.i.i.i.i = icmp eq %"struct.std::pair"* %18, null
-  br i1 %tobool.i.i.i.i.i.i, label %_ZN4llvm12SMDiagnosticaSEOS0_.exit, label %if.then.i.i.i.i.i.i
+  br i1 %tobool.i.i.i.i.i.i, label %_ZN4llvm12SMDiagnosticaSSYS0_.exit, label %if.then.i.i.i.i.i.i
 
 if.then.i.i.i.i.i.i:                              ; preds = %_ZN4llvm12SMDiagnosticC2ENS_9StringRefENS_9SourceMgr8DiagKindES1_.exit
   %23 = bitcast %"struct.std::pair"* %18 to i8*
   call void @_ZdlPv(i8* %23) #3
-  br label %_ZN4llvm12SMDiagnosticaSEOS0_.exit
+  br label %_ZN4llvm12SMDiagnosticaSSYS0_.exit
 
-_ZN4llvm12SMDiagnosticaSEOS0_.exit:               ; preds = %_ZN4llvm12SMDiagnosticC2ENS_9StringRefENS_9SourceMgr8DiagKindES1_.exit, %if.then.i.i.i.i.i.i
+_ZN4llvm12SMDiagnosticaSSYS0_.exit:               ; preds = %_ZN4llvm12SMDiagnosticC2ENS_9StringRefENS_9SourceMgr8DiagKindES1_.exit, %if.then.i.i.i.i.i.i
   %24 = getelementptr inbounds %"class.llvm::SMDiagnostic", %"class.llvm::SMDiagnostic"* %Err, i64 0, i32 9, i32 0
   %25 = getelementptr inbounds %"class.llvm::SMDiagnostic", %"class.llvm::SMDiagnostic"* %ref.tmp, i64 0, i32 9, i32 0
-  %call2.i.i42 = call dereferenceable(48) %"class.llvm::SmallVectorImpl.85"* @_ZN4llvm15SmallVectorImplINS_7SMFixItEEaSEOS2_(%"class.llvm::SmallVectorImpl.85"* %24, %"class.llvm::SmallVectorImpl.85"* dereferenceable(48) %25) #3
+  %call2.i.i42 = call dereferenceable(48) %"class.llvm::SmallVectorImpl.85"* @_ZN4llvm15SmallVectorImplINS_7SMFixItEEaSSYS2_(%"class.llvm::SmallVectorImpl.85"* %24, %"class.llvm::SmallVectorImpl.85"* dereferenceable(48) %25) #3
   call void @_ZN4llvm12SMDiagnosticD2Ev(%"class.llvm::SMDiagnostic"* %ref.tmp) #3
   %26 = getelementptr inbounds %"class.std::allocator", %"class.std::allocator"* %ref.tmp.i.i, i64 0, i32 0
   call void @llvm.lifetime.start.p0i8(i64 1, i8* %26) #3
@@ -325,7 +325,7 @@ _ZN4llvm12SMDiagnosticaSEOS0_.exit:               ; preds = %_ZN4llvm12SMDiagnos
   %cmp.i.i.i = icmp eq i8* %arrayidx.i.i.i36, bitcast ([0 x i64]* @_ZNSs4_Rep20_S_empty_rep_storageE to i8*)
   br i1 %cmp.i.i.i, label %_ZNSsD1Ev.exit, label %if.then.i.i.i45, !prof !28
 
-if.then.i.i.i45:                                  ; preds = %_ZN4llvm12SMDiagnosticaSEOS0_.exit
+if.then.i.i.i45:                                  ; preds = %_ZN4llvm12SMDiagnosticaSSYS0_.exit
   %_M_refcount.i.i.i = getelementptr inbounds i8, i8* %8, i64 -8
   %28 = bitcast i8* %_M_refcount.i.i.i to i32*
   br i1 icmp ne (i8* bitcast (i32 (i32*, void (i8*)*)* @__pthread_key_create to i8*), i8* null), label %if.then.i.i.i.i, label %if.else.i.i.i.i
@@ -354,7 +354,7 @@ if.then4.i.i.i:                                   ; preds = %_ZN9__gnu_cxxL27__e
   call void @_ZNSs4_Rep10_M_destroyERKSaIcE(%"struct.std::basic_string<char, std::char_traits<char>, std::allocator<char> >::_Rep"* %27, %"class.std::allocator"* dereferenceable(1) %ref.tmp.i.i) #3
   br label %_ZNSsD1Ev.exit
 
-_ZNSsD1Ev.exit:                                   ; preds = %_ZN4llvm12SMDiagnosticaSEOS0_.exit, %_ZN9__gnu_cxxL27__exchange_and_add_dispatchEPii.exit.i.i.i, %if.then4.i.i.i
+_ZNSsD1Ev.exit:                                   ; preds = %_ZN4llvm12SMDiagnosticaSSYS0_.exit, %_ZN9__gnu_cxxL27__exchange_and_add_dispatchEPii.exit.i.i.i, %if.then4.i.i.i
   call void @llvm.lifetime.end.p0i8(i64 1, i8* %26) #3
   %31 = getelementptr inbounds %"class.std::allocator", %"class.std::allocator"* %ref.tmp.i.i47, i64 0, i32 0
   call void @llvm.lifetime.start.p0i8(i64 1, i8* %31) #3
@@ -464,7 +464,7 @@ declare void @_ZNSsC1EPKcmRKSaIcE(%"class.std::basic_string"*, i8*, i64, %"class
 
 declare hidden void @_ZN4llvm12SMDiagnosticD2Ev(%"class.llvm::SMDiagnostic"* readonly %this) unnamed_addr #2 align 2
 
-declare dereferenceable(48) %"class.llvm::SmallVectorImpl.85"* @_ZN4llvm15SmallVectorImplINS_7SMFixItEEaSEOS2_(%"class.llvm::SmallVectorImpl.85"* %this, %"class.llvm::SmallVectorImpl.85"* dereferenceable(48) %RHS) #0 align 2
+declare dereferenceable(48) %"class.llvm::SmallVectorImpl.85"* @_ZN4llvm15SmallVectorImplINS_7SMFixItEEaSSYS2_(%"class.llvm::SmallVectorImpl.85"* %this, %"class.llvm::SmallVectorImpl.85"* dereferenceable(48) %RHS) #0 align 2
 
 declare %"class.llvm::Module"* @_ZN4llvm7ParseIREPNS_12MemoryBufferERNS_12SMDiagnosticERNS_11LLVMContextE(%"class.llvm::MemoryBuffer"* %Buffer, %"class.llvm::SMDiagnostic"* dereferenceable(200) %Err, %"class.llvm::LLVMContext"* dereferenceable(8) %Context) #0
 

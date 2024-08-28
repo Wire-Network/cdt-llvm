@@ -717,7 +717,7 @@ public:
 //
 // This resource lists the version information on the executable/library.
 // The declaration consists of the following items:
-//   * A number of fixed optional version statements (e.g. FILEVERSION, FILEOS)
+//   * A number of fixed optional version statements (e.g. FILEVERSION, FILSYS)
 //   * BEGIN
 //   * A number of BLOCK and/or VALUE statements. BLOCK recursively defines
 //       another block of version information, whereas VALUE defines a

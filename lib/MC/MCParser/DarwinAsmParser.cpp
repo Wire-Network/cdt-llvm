@@ -1147,7 +1147,7 @@ static Triple::OSType getOSTypeFromPlatform(MachO::PlatformType Type) {
   case MachO::PLATFORM_IOS:     return Triple::IOS;
   case MachO::PLATFORM_TVOS:    return Triple::TvOS;
   case MachO::PLATFORM_WATCHOS: return Triple::WatchOS;
-  case MachO::PLATFORM_BRIDGEOS:         /* silence warning */ break;
+  case MachO::PLATFORM_BRIDGSYS:         /* silence warning */ break;
   case MachO::PLATFORM_MACCATALYST: return Triple::IOS;
   case MachO::PLATFORM_IOSSIMULATOR:     /* silence warning */ break;
   case MachO::PLATFORM_TVOSSIMULATOR:    /* silence warning */ break;
