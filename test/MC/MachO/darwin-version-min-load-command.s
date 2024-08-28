@@ -10,7 +10,7 @@
 // CHECK:   version 10.10
 
 // CHECK-IOS: Load command
-// CHECK-IOS:       cmd LC_VERSION_MIN_IPHONSYS
+// CHECK-IOS:       cmd LC_VERSION_MIN_IPHONEOS
 // CHECK-IOS:   cmdsize 16
 // CHECK-IOS:   version 8.0
 

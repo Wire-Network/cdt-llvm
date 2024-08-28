@@ -315,7 +315,7 @@ RUN: not llvm-objdump --macho --private-headers %p/Inputs/macho-invalid-vers-sma
 INVALID-VERS-SMALL: macho-invalid-vers-small': truncated or malformed object (load command 0 LC_VERSION_MIN_MACOSX has incorrect cmdsize)
 
 RUN: not llvm-objdump --macho --private-headers %p/Inputs/macho-invalid-vers-more-than-one 2>&1 | FileCheck -check-prefix INVALID-VERS-MORE-THAN-ONE %s
-INVALID-VERS-MORE-THAN-ONE: macho-invalid-vers-more-than-one': truncated or malformed object (more than one LC_VERSION_MIN_MACOSX, LC_VERSION_MIN_IPHONSYS, LC_VERSION_MIN_TVOS or LC_VERSION_MIN_WATCHOS command)
+INVALID-VERS-MORE-THAN-ONE: macho-invalid-vers-more-than-one': truncated or malformed object (more than one LC_VERSION_MIN_MACOSX, LC_VERSION_MIN_IPHONEOS, LC_VERSION_MIN_TVOS or LC_VERSION_MIN_WATCHOS command)
 
 RUN: not llvm-objdump --macho --private-headers %p/Inputs/macho-invalid-rpath-small 2>&1 | FileCheck -check-prefix INVALID-RPATH-SMALL %s
 INVALID-RPATH-SMALL: macho-invalid-rpath-small': truncated or malformed object (load command 0 LC_RPATH cmdsize too small)

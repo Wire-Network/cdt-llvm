@@ -722,8 +722,8 @@ void MachODumper::printMachOVersionMin() {
     case MachO::LC_VERSION_MIN_MACOSX:
       Cmd = "LC_VERSION_MIN_MACOSX";
       break;
-    case MachO::LC_VERSION_MIN_IPHONSYS:
-      Cmd = "LC_VERSION_MIN_IPHONSYS";
+    case MachO::LC_VERSION_MIN_IPHONEOS:
+      Cmd = "LC_VERSION_MIN_IPHONEOS";
       break;
     case MachO::LC_VERSION_MIN_TVOS:
       Cmd = "LC_VERSION_MIN_TVOS";

@@ -820,7 +820,7 @@ struct encryption_info_command_64 {
 
 struct version_min_command {
   uint32_t cmd;     // LC_VERSION_MIN_MACOSX or
-                    // LC_VERSION_MIN_IPHONSYS
+                    // LC_VERSION_MIN_IPHONEOS
   uint32_t cmdsize; // sizeof(struct version_min_command)
   uint32_t version; // X.Y.Z is encoded in nibbles xxxx.yy.zz
   uint32_t sdk;     // X.Y.Z is encoded in nibbles xxxx.yy.zz

@@ -44,7 +44,7 @@ CHECK: attributes (none)
 CHECK:  reserved1 0
 CHECK:  reserved2 0
 CHECK: Load command 1
-CHECK:       cmd LC_VERSION_MIN_IPHONSYS
+CHECK:       cmd LC_VERSION_MIN_IPHONEOS
 CHECK:   cmdsize 16
 CHECK:   version 9.0
 CHECK:       sdk n/a
@@ -269,7 +269,7 @@ EXE:      cmd LC_UUID
 EXE:  cmdsize 24
 EXE:     uuid D687F888-CD3F-3276-8C94-BA3CCA21D820
 EXE: Load command 9
-EXE:       cmd LC_VERSION_MIN_IPHONSYS
+EXE:       cmd LC_VERSION_MIN_IPHONEOS
 EXE:   cmdsize 16
 EXE:   version 9.0
 EXE:       sdk 9.0
