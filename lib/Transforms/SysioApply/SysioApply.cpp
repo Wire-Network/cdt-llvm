@@ -1,4 +1,4 @@
-//===- EosioApply ---------------===//
+//===- SysioApply ---------------===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -28,26 +28,26 @@
 
 using namespace llvm;
 
-#define DEBUG_TYPE "eosio_apply"
+#define DEBUG_TYPE "sysio_apply"
 static cl::opt<std::string> entry_opt (
    "entry",
    cl::desc("Specify entry point")
 );
 
 namespace {
-  // EosioApply - Mutate the apply function as needed
-  struct EosioApplyPass : public FunctionPass {
+  // SysioApply - Mutate the apply function as needed
+  struct SysioApplyPass : public FunctionPass {
     static char ID;
-    EosioApplyPass() : FunctionPass(ID) {}
+    SysioApplyPass() : FunctionPass(ID) {}
     bool runOnFunction(Function &F) override {
-       if (F.hasFnAttribute("eosio_wasm_entry") || F.getName().equals("apply")) {
+       if (F.hasFnAttribute("sysio_wasm_entry") || F.getName().equals("apply")) {
          auto wasm_ctors = F.getParent()->getOrInsertFunction("__wasm_call_ctors", AttributeList{}, Type::getVoidTy(F.getContext()));
          auto wasm_dtors = F.getParent()->getOrInsertFunction("__cxa_finalize", AttributeList{}, Type::getVoidTy(F.getContext()), Type::getInt32Ty(F.getContext()));
 
          IRBuilder<> builder(&F.getEntryBlock());
          builder.SetInsertPoint(&(F.getEntryBlock().front()));
 
-         auto set_contract = F.getParent()->getOrInsertFunction("eosio_set_contract_name", AttributeList{}, Type::getVoidTy(F.getContext()), Type::getInt64Ty(F.getContext()));
+         auto set_contract = F.getParent()->getOrInsertFunction("sysio_set_contract_name", AttributeList{}, Type::getVoidTy(F.getContext()), Type::getInt64Ty(F.getContext()));
 
          CallInst* set_contract_call = builder.CreateCall(set_contract, {F.arg_begin()}, "");
          if (const Function* F_ = dyn_cast<const Function>(set_contract.getCallee()->stripPointerCasts()))
@@ -74,8 +74,8 @@ namespace {
   };
 }
 
-char EosioApplyPass::ID = 0;
-static RegisterPass<EosioApplyPass> X("apply_fixup", "Eosio Apply Fixups");
+char SysioApplyPass::ID = 0;
+static RegisterPass<SysioApplyPass> X("apply_fixup", "Sysio Apply Fixups");
 
-static void registerEosioApplyPass(const PassManagerBuilder&, legacy::PassManagerBase& PM) { PM.add(new EosioApplyPass()); }
-static RegisterStandardPasses RegisterMyPass(PassManagerBuilder::EP_EarlyAsPossible, registerEosioApplyPass);
+static void registerSysioApplyPass(const PassManagerBuilder&, legacy::PassManagerBase& PM) { PM.add(new SysioApplyPass()); }
+static RegisterStandardPasses RegisterMyPass(PassManagerBuilder::EP_EarlyAsPossible, registerSysioApplyPass);

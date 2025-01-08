@@ -1,4 +1,4 @@
-//===- EosioSoftfloat ---------------===//
+//===- SysioSoftfloat ---------------===//
 //
 //                     The LLVM Compiler Infrastructure
 //
@@ -29,53 +29,53 @@
 
 using namespace llvm;
 
-#define DEBUG_TYPE "eosio_softfloat"
+#define DEBUG_TYPE "sysio_softfloat"
 
 namespace {
-  // EosioSoftfloat - Mutate the apply function as needed
-  struct EosioSoftfloatPass : public FunctionPass {
+  // SysioSoftfloat - Mutate the apply function as needed
+  struct SysioSoftfloatPass : public FunctionPass {
     static char ID;
-    EosioSoftfloatPass() : FunctionPass(ID) {}
+    SysioSoftfloatPass() : FunctionPass(ID) {}
 
     bool runOnFunction(Function &f) override {
-       auto  f32add = f.getParent()->getOrInsertFunction("_eosio_f32_add", AttributeList{},
+       auto  f32add = f.getParent()->getOrInsertFunction("_sysio_f32_add", AttributeList{},
                                                                    Type::getFloatTy(f.getContext()),
                                                                    Type::getFloatTy(f.getContext()),
                                                                    Type::getFloatTy(f.getContext()));
-       auto  f32sub = f.getParent()->getOrInsertFunction("_eosio_f32_sub", AttributeList{},
+       auto  f32sub = f.getParent()->getOrInsertFunction("_sysio_f32_sub", AttributeList{},
                                                                    Type::getFloatTy(f.getContext()),
                                                                    Type::getFloatTy(f.getContext()),
                                                                    Type::getFloatTy(f.getContext()));
-       auto  f32mul = f.getParent()->getOrInsertFunction("_eosio_f32_mul", AttributeList{},
+       auto  f32mul = f.getParent()->getOrInsertFunction("_sysio_f32_mul", AttributeList{},
                                                                    Type::getFloatTy(f.getContext()),
                                                                    Type::getFloatTy(f.getContext()),
                                                                    Type::getFloatTy(f.getContext()));
-       auto  f32div = f.getParent()->getOrInsertFunction("_eosio_f32_div", AttributeList{},
+       auto  f32div = f.getParent()->getOrInsertFunction("_sysio_f32_div", AttributeList{},
                                                                    Type::getFloatTy(f.getContext()),
                                                                    Type::getFloatTy(f.getContext()),
                                                                    Type::getFloatTy(f.getContext()));
-       auto  f32rem = f.getParent()->getOrInsertFunction("_eosio_f32_rem", AttributeList{},
+       auto  f32rem = f.getParent()->getOrInsertFunction("_sysio_f32_rem", AttributeList{},
                                                                    Type::getFloatTy(f.getContext()),
                                                                    Type::getFloatTy(f.getContext()),
                                                                    Type::getFloatTy(f.getContext()));
 
-       auto  f64add = f.getParent()->getOrInsertFunction("_eosio_f64_add", AttributeList{},
+       auto  f64add = f.getParent()->getOrInsertFunction("_sysio_f64_add", AttributeList{},
                                                                    Type::getFloatTy(f.getContext()),
                                                                    Type::getFloatTy(f.getContext()),
                                                                    Type::getFloatTy(f.getContext()));
-       auto  f64sub = f.getParent()->getOrInsertFunction("_eosio_f64_sub", AttributeList{},
+       auto  f64sub = f.getParent()->getOrInsertFunction("_sysio_f64_sub", AttributeList{},
                                                                    Type::getFloatTy(f.getContext()),
                                                                    Type::getFloatTy(f.getContext()),
                                                                    Type::getFloatTy(f.getContext()));
-       auto  f64mul = f.getParent()->getOrInsertFunction("_eosio_f64_mul", AttributeList{},
+       auto  f64mul = f.getParent()->getOrInsertFunction("_sysio_f64_mul", AttributeList{},
                                                                    Type::getFloatTy(f.getContext()),
                                                                    Type::getFloatTy(f.getContext()),
                                                                    Type::getFloatTy(f.getContext()));
-       auto  f64div = f.getParent()->getOrInsertFunction("_eosio_f64_div", AttributeList{},
+       auto  f64div = f.getParent()->getOrInsertFunction("_sysio_f64_div", AttributeList{},
                                                                    Type::getFloatTy(f.getContext()),
                                                                    Type::getFloatTy(f.getContext()),
                                                                    Type::getFloatTy(f.getContext()));
-       auto  f64rem = f.getParent()->getOrInsertFunction("_eosio_f64_rem", AttributeList{},
+       auto  f64rem = f.getParent()->getOrInsertFunction("_sysio_f64_rem", AttributeList{},
                                                                        Type::getFloatTy(f.getContext()),
                                                                        Type::getFloatTy(f.getContext()),
                                                                        Type::getFloatTy(f.getContext()));
@@ -147,8 +147,8 @@ namespace {
   };
 }
 
-char EosioSoftfloatPass::ID = 0;
-static RegisterPass<EosioSoftfloatPass> X("softfloat_fixup", "Eosio Softfloat Fixups");
+char SysioSoftfloatPass::ID = 0;
+static RegisterPass<SysioSoftfloatPass> X("softfloat_fixup", "Sysio Softfloat Fixups");
 
-static void registerEosioSoftfloatPass(const PassManagerBuilder&, legacy::PassManagerBase& PM) { PM.add(new EosioSoftfloatPass()); }
-static RegisterStandardPasses RegisterMyPass(PassManagerBuilder::EP_EarlyAsPossible, registerEosioSoftfloatPass);
+static void registerSysioSoftfloatPass(const PassManagerBuilder&, legacy::PassManagerBase& PM) { PM.add(new SysioSoftfloatPass()); }
+static RegisterStandardPasses RegisterMyPass(PassManagerBuilder::EP_EarlyAsPossible, registerSysioSoftfloatPass);
