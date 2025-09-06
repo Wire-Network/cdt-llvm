@@ -1,5 +1,5 @@
 # See docs/CMake.html for instructions about how to build LLVM with CMake.
-cmake_minimum_required(VERSION 3.4.3)
+cmake_minimum_required(VERSION 3.10)
 
 if(POLICY CMP0068)
   cmake_policy(SET CMP0068 NEW)
@@ -295,9 +295,13 @@ set(LLVM_ALL_TARGETS
 # List of targets with JIT support:
 set(LLVM_TARGETS_WITH_JIT X86 PowerPC AArch64 ARM Mips SystemZ)
 
-set(LLVM_TARGETS_TO_BUILD "X86"
+if(APPLE)
+  set(LLVM_TARGETS_TO_BUILD "AArch64;ARM"
     CACHE STRING "Semicolon-separated list of targets to build, or \"all\".")
-
+else()
+  set(LLVM_TARGETS_TO_BUILD "X86"
+    CACHE STRING "Semicolon-separated list of targets to build, or \"all\".")
+endif()
  set(LLVM_EXPERIMENTAL_TARGETS_TO_BUILD "WebAssembly"
   CACHE STRING "Semicolon-separated list of experimental targets to build.")
 
